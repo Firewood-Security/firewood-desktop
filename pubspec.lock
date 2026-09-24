@@ -260,21 +260,21 @@ packages:
   firewood_core:
     dependency: "direct main"
     description:
-      path: "../../packages/firewood_core"
+      path: "../firewood-core"
       relative: true
     source: path
     version: "0.1.0"
   firewood_design:
     dependency: "direct main"
     description:
-      path: "../../packages/firewood_design"
+      path: "packages/firewood_design"
       relative: true
     source: path
     version: "0.1.0"
   firewood_ui_desktop:
     dependency: "direct main"
     description:
-      path: "../../packages/firewood_ui_desktop"
+      path: "packages/firewood_ui_desktop"
       relative: true
     source: path
     version: "0.1.0"
