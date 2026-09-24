@@ -17,6 +17,7 @@ dependencies:
     git:
       url: git@github.com:Firewood-Security/firewood-core.git
       ref: v0.1.0
+      path: framework-dart
   cryptography: ^2.7.0
   firewood_design:
     path: packages/firewood_design

@@ -260,7 +260,7 @@ packages:
   firewood_core:
     dependency: "direct main"
     description:
-      path: "../firewood-core"
+      path: "../firewood-core/framework-dart"
       relative: true
     source: path
     version: "0.1.0"
