@@ -1,0 +1,16 @@
+name: firewood_ui_desktop
+description: Desktop-only Firewood components (title bar, rail, auth scaffold).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  window_manager: ^0.4.3
+  hugeicons: ^1.2.0
+  firewood_design:
+    path: ../firewood_design

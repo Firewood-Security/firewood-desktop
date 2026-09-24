@@ -1,0 +1,67 @@
+name: firewood
+base: core24
+version: '1.0.0'
+summary: Zero-knowledge password, credential, key, .env & file vault manager
+description: |
+  Firewood is an offline-first, zero-knowledge secret and vault management tool.
+  
+  Features:
+  - 🛡️ Authenticated Cryptography: Argon2id (64MB) + XChaCha20-Poly1305 AEAD.
+  - 🔑 End-to-End Key & Secret Management: Store, reveal, and rotate API keys, SSH keys, certificates, and credentials.
+  - 📄 Secure File Vault: Ingest, list, and extract arbitrary confidential files with SHA-256 integrity verification.
+  - ⚡ .env Ingestion & In-Memory Execution: Inject secrets directly into child processes without disk leakage.
+  - 🔄 Cross-App Backups: Export and import .firewood authenticated archives compatible across the Firewood Flutter apps and CLI.
+  - 🔒 Process Hardening: Built-in memory zeroization and PR_SET_DUMPABLE(0) anti-debugging protection.
+
+grade: stable
+confinement: strict
+compression: lzo
+license: MIT
+
+website: https://github.com/ytp24/firewood
+source-code: https://github.com/ytp24/firewood
+issues: https://github.com/ytp24/firewood/issues
+
+platforms:
+  amd64:
+  arm64:
+  armhf:
+  riscv64:
+
+apps:
+  firewood:
+    command: bin/firewood
+    plugs:
+      - home
+      - network
+      - network-bind
+      - removable-media
+      - password-manager-service
+    completer: share/bash-completion/completions/firewood
+
+parts:
+  firewood:
+    plugin: rust
+    source: cli
+    build-packages:
+      - pkg-config
+      - libssl-dev
+      - libdbus-1-dev
+      - gcc
+      - libc6-dev
+    stage-packages:
+      - libssl3
+      - libdbus-1-3
+    override-build: |
+      craftctl default
+      mkdir -p "${CRAFT_PART_INSTALL}/bin"
+      install -m 755 "${CRAFT_PART_BUILD}/target/release/firewood" "${CRAFT_PART_INSTALL}/bin/firewood"
+      
+      # Generate and install shell completions
+      mkdir -p "${CRAFT_PART_INSTALL}/share/bash-completion/completions"
+      mkdir -p "${CRAFT_PART_INSTALL}/share/zsh/site-functions"
+      mkdir -p "${CRAFT_PART_INSTALL}/share/fish/vendor_completions.d"
+      
+      "${CRAFT_PART_INSTALL}/bin/firewood" completion bash > "${CRAFT_PART_INSTALL}/share/bash-completion/completions/firewood" 2>/dev/null || true
+      "${CRAFT_PART_INSTALL}/bin/firewood" completion zsh > "${CRAFT_PART_INSTALL}/share/zsh/site-functions/_firewood" 2>/dev/null || true
+      "${CRAFT_PART_INSTALL}/bin/firewood" completion fish > "${CRAFT_PART_INSTALL}/share/fish/vendor_completions.d/firewood.fish" 2>/dev/null || true

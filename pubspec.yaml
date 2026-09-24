@@ -1,0 +1,55 @@
+name: firewood_desktop
+description: Firewood desktop app (Linux, Windows, macOS) built on firewood_core.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Shared, device-agnostic framework + design system
+  firewood_core:
+    git:
+      url: git@github.com:Firewood-Security/firewood-core.git
+      ref: v0.1.0
+  cryptography: ^2.7.0
+  firewood_design:
+    path: packages/firewood_design
+  firewood_ui_desktop:
+    path: packages/firewood_ui_desktop
+
+  # Desktop window management
+  window_manager: ^0.4.3
+
+  # Icons
+  hugeicons: ^1.2.0
+
+  # Bluetooth Low Energy (desktop central role; Linux via BlueZ)
+  flutter_blue_plus: ^2.3.13
+
+  # Persistence (ciphertext only)
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+
+  # State + utilities
+  flutter_riverpod: ^2.5.0
+  path_provider: ^2.1.2
+  uuid: ^4.4.0
+  file_picker: ^8.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  isar_generator: ^3.1.0+1
+  build_runner: ^2.4.8
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
