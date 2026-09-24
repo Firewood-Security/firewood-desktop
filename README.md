@@ -1,27 +1,34 @@
 # firewood-desktop
 
-Firewood desktop client (Linux, Windows, macOS) built on `firewood_core`.
+Firewood desktop client for Linux, Windows and macOS.
 
 ## Layout
 
-- app at the repository root (`lib/`, `linux/`, `macos/`, `windows/`)
-- `packages/firewood_design` - design tokens, colours, strings, theme
-- `packages/firewood_ui_desktop` - desktop widgets (rail, title bar, buttons)
+- the application lives at the repository root (`lib/`, `linux/`, `macos/`, `windows/`, `assets/`)
+- `packages/firewood_design` — design tokens, colours, strings, theme
+- `packages/firewood_ui_desktop` — desktop widgets (rail, title bar, buttons, dropdown, auth scaffold)
+- `test/` — widget/layout tests
 
-`firewood_core` is consumed as a **pinned git dependency** (`v0.1.0`). For local
-development, create `pubspec_overrides.yaml` (git-ignored) to point at a sibling
-checkout:
+## Dependencies
 
-```yaml
-dependency_overrides:
-  firewood_core:
-    path: ../firewood-core
-```
+- `firewood_core` (pinned git dependency, `ref: v0.1.0`) — encrypted container, vault and sharing services
+- `window_manager` — window/tray management
+- `flutter_blue_plus` — BLE share transport
+- `hugeicons`, `isar`, `flutter_riverpod`, `cryptography`, `file_picker`
+
+To develop against an unreleased core, add a git-ignored `pubspec_overrides.yaml`
+with a `dependency_overrides` entry that points `firewood_core` at a local
+checkout.
 
 ## Run
 
 ```bash
 flutter pub get
-flutter run -d linux     # or -d windows / -d macos
+flutter run -d linux      # or -d windows / -d macos
 flutter test
 ```
+
+## Package
+
+Linux `snapcraft.yaml` is included; the desktop build targets `linux`, `windows`
+and `macos`.
