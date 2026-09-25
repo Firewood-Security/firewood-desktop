@@ -12,6 +12,7 @@ import 'package:firewood_design/firewood_design.dart';
 import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
 
 import '../providers.dart';
+import '../widgets/airshare_dialog.dart';
 
 enum _Stage { idle, working, done, error }
 
@@ -195,8 +196,167 @@ class _SharingPageState extends ConsumerState<SharingPage> {
                   style: TextStyle(
                       color: AppColors.offWhite, fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: AppSpacing.xs),
-              const Text('Device-to-device transfer of encrypted .firewood files',
+              const Text('Device-to-device transfer of encrypted .firewood files & credentials',
                   style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+              const SizedBox(height: AppSpacing.xl),
+
+              // AirShare (Spark QR & 4-Digit Flame Code) Responsive Hero Card
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF1B1E28),
+                      Color(0xFF151821),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: AppRadii.lgAll,
+                  border: Border.all(
+                    color: AppColors.orangeAccent.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.orangeAccent.withValues(alpha: 0.15),
+                            borderRadius: AppRadii.mdAll,
+                            border: Border.all(
+                              color: AppColors.orangeAccent.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: const Center(
+                            child: HugeIcon(
+                              icon: HugeIcons.strokeRoundedShare08,
+                              size: 22,
+                              color: AppColors.orangeAccent,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Firewood AirShare',
+                                    style: TextStyle(
+                                      color: AppColors.offWhite,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.orangeAccent.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: AppColors.orangeAccent.withValues(alpha: 0.4),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Spark QR + 4-Digit Flame Code',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.orangeAccent,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Zero cloud relays, zero disk trace. Backed by X25519 & ChaCha20-Poly1305.',
+                                style: TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: [
+                        ElevatedButton.icon(
+                          icon: const HugeIcon(
+                            icon: HugeIcons.strokeRoundedUpload04,
+                            size: 14,
+                            color: Colors.black,
+                            strokeWidth: 2,
+                          ),
+                          label: const Text(
+                            'AirShare Send',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.orangeAccent,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                          ),
+                          onPressed: () => AirShareDialog.show(
+                            context,
+                            role: AirShareRole.send,
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          icon: const HugeIcon(
+                            icon: HugeIcons.strokeRoundedDownload04,
+                            size: 14,
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                          label: const Text(
+                            'AirShare Receive',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFF384055)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                          ),
+                          onPressed: () => AirShareDialog.show(
+                            context,
+                            role: AirShareRole.receive,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: AppSpacing.xl),
 
               Row(

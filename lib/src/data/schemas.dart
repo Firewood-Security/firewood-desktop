@@ -8,13 +8,16 @@ part 'schemas.g.dart';
 class VaultRecord {
   Id id = Isar.autoIncrement;
 
-  @Index(unique: true)
+  @Index(unique: true, replace: true)
   late String vaultId;
 
   late String name;
   late List<int> salt;
   List<int>? verifierToken;
   List<int>? verifierNonce;
+  List<int>? wrappedMekToken;
+  List<int>? wrappedMekNonce;
+  int version = 1;
   late bool isDefault;
   late DateTime createdAt;
 }
@@ -23,7 +26,7 @@ class VaultRecord {
 class ItemRecord {
   Id id = Isar.autoIncrement;
 
-  @Index(unique: true)
+  @Index(unique: true, replace: true)
   late String itemId;
 
   @Index()

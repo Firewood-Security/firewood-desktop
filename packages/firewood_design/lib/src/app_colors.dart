@@ -33,6 +33,7 @@ class AppColors {
   static const Color roseOnContainer = Color(0xFFFECDD3);
 
   static const Color mintAccent = Color(0xFF22C55E);
+  static const Color emeraldAccent = Color(0xFF22C55E);
   static const Color mintContainer = Color(0xFF132A1C);
   static const Color mintBorder = Color(0xFF235432);
   static const Color mintOnContainer = Color(0xFFDCFCE7);

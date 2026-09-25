@@ -42,6 +42,13 @@ dependencies:
   path_provider: ^2.1.2
   uuid: ^4.4.0
   file_picker: ^8.0.0
+  shared_preferences: ^2.2.3
+  intl: ^0.20.2
+  otp: ^3.2.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.2
+  zxing_lib: ^1.1.4
+  image: ^4.10.1
 
 dev_dependencies:
   flutter_test:
@@ -49,8 +56,24 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   isar_generator: ^3.1.0+1
   build_runner: ^2.4.8
+  qr: ^3.0.2
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/FWS.png
+    - assets/icons/
+    - assets/icons/cutouts/
+    - assets/icons/cutouts_dark/
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/inter/Inter-Bold.ttf
+          weight: 700

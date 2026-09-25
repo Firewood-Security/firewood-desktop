@@ -2,7 +2,8 @@
 ///
 /// Both the mobile and desktop apps import this so colour, spacing, shape and
 /// copy stay consistent, while each app builds its own components on top.
-library firewood_design;
+
+library;
 
 export 'src/app_colors.dart';
 export 'src/app_tokens.dart';

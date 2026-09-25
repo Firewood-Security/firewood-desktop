@@ -12,6 +12,11 @@ class IsarSecretStore implements SecretStore {
   static late Isar _isar;
 
   static Future<void> initialize() async {
+    final existing = Isar.getInstance('firewood_desktop');
+    if (existing != null) {
+      _isar = existing;
+      return;
+    }
     final dir = await getApplicationSupportDirectory();
     _isar = await Isar.open(
       [VaultRecordSchema, ItemRecordSchema, BurnerRecordSchema],
@@ -30,6 +35,9 @@ class IsarSecretStore implements SecretStore {
       salt: row.salt,
       verifierToken: row.verifierToken,
       verifierNonce: row.verifierNonce,
+      wrappedMekToken: row.wrappedMekToken,
+      wrappedMekNonce: row.wrappedMekNonce,
+      version: row.version,
       isDefault: row.isDefault,
       createdAt: row.createdAt,
     );
@@ -37,15 +45,20 @@ class IsarSecretStore implements SecretStore {
 
   @override
   Future<void> putVault(StoredVault vault) async {
+    final existing = await _isar.vaultRecords.filter().vaultIdEqualTo(vault.vaultId).findFirst();
     final row = VaultRecord()
+      ..id = existing?.id ?? Isar.autoIncrement
       ..vaultId = vault.vaultId
       ..name = vault.name
       ..salt = vault.salt
       ..verifierToken = vault.verifierToken
       ..verifierNonce = vault.verifierNonce
+      ..wrappedMekToken = vault.wrappedMekToken
+      ..wrappedMekNonce = vault.wrappedMekNonce
+      ..version = vault.version
       ..isDefault = vault.isDefault
       ..createdAt = vault.createdAt;
-    await _isar.writeTxn(() => _isar.vaultRecords.put(row));
+    await _isar.writeTxn(() => _isar.vaultRecords.putByVaultId(row));
   }
 
   @override
@@ -67,7 +80,9 @@ class IsarSecretStore implements SecretStore {
 
   @override
   Future<void> putItem(StoredItem item) async {
+    final existing = await _isar.itemRecords.filter().itemIdEqualTo(item.itemId).findFirst();
     final row = ItemRecord()
+      ..id = existing?.id ?? Isar.autoIncrement
       ..itemId = item.itemId
       ..vaultId = item.vaultId
       ..encryptedData = item.encryptedData
@@ -75,7 +90,7 @@ class IsarSecretStore implements SecretStore {
       ..type = item.type
       ..title = item.title
       ..updatedAt = item.updatedAt;
-    await _isar.writeTxn(() => _isar.itemRecords.put(row));
+    await _isar.writeTxn(() => _isar.itemRecords.putByItemId(row));
   }
 
   @override
@@ -101,6 +116,7 @@ class IsarSecretStore implements SecretStore {
   @override
   Future<void> putBurner(StoredBurner burner) async {
     final row = BurnerRecord()
+      ..id = burner.id == 0 ? Isar.autoIncrement : burner.id
       ..passwordHash = burner.passwordHash
       ..label = burner.label
       ..createdAt = burner.createdAt;

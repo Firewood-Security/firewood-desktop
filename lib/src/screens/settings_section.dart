@@ -13,6 +13,8 @@ import 'package:firewood_design/firewood_design.dart';
 import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
 
 import '../providers.dart';
+import '../services/autotype_service.dart';
+import '../services/browser_bridge_service.dart';
 
 class SettingsSection extends ConsumerStatefulWidget {
   const SettingsSection({super.key});
@@ -95,6 +97,49 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
       await ref.read(backupServiceProvider).importVault(bytes, password);
       _snack('Vault imported. Unlock again with the imported password.');
       ref.read(authProvider.notifier).state = null;
+    } catch (e) {
+      _snack('Import failed: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _importFromOtherVault() async {
+    final key = ref.read(authProvider);
+    if (key == null) {
+      _snack('Vault must be unlocked to import items', error: true);
+      return;
+    }
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'csv'],
+      dialogTitle: 'Select Bitwarden JSON, 1Password, or CSV Export',
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return;
+
+    setState(() => _busy = true);
+    try {
+      final content = await File(path).readAsString();
+      final items = VaultImporter.parse(content);
+      if (items.isEmpty) {
+        _snack('No valid items found in the selected file.', error: true);
+        return;
+      }
+
+      final itemService = ref.read(itemServiceProvider);
+      int count = 0;
+      for (final it in items) {
+        await itemService.addItem(
+          key: key,
+          type: it.type,
+          title: it.title,
+          fields: it.fields,
+        );
+        count++;
+      }
+      _snack('Successfully imported $count credential${count == 1 ? '' : 's'} into your vault!');
     } catch (e) {
       _snack('Import failed: $e', error: true);
     } finally {
@@ -242,6 +287,727 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
     }
   }
 
+  Future<void> _showChangePasswordDialog() async {
+    final currentKey = ref.read(authProvider);
+    if (currentKey == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please unlock vault first.')),
+      );
+      return;
+    }
+
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    String? dialogError;
+    bool busy = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF161922),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFF262C3A)),
+          ),
+          title: const Row(
+            children: [
+              HugeIcon(
+                icon: HugeIcons.strokeRoundedLockPassword,
+                color: AppColors.orangeAccent,
+                size: 22,
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Change Master Password',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Envelope Encryption rotates the Master Encryption Key wrapper instantly. '
+                  'Individual vault records are preserved without re-encryption.',
+                  style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: currentController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Current Master Password',
+                    filled: true,
+                    fillColor: const Color(0xFF1B1E29),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: newController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'New Master Password',
+                    filled: true,
+                    fillColor: const Color(0xFF1B1E29),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm New Password',
+                    filled: true,
+                    fillColor: const Color(0xFF1B1E29),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    dialogError!,
+                    style: const TextStyle(color: AppColors.roseAccent, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.orangeAccent,
+                foregroundColor: Colors.black,
+              ),
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (newController.text.length < 8) {
+                        setDialogState(() => dialogError = 'New password must be at least 8 characters');
+                        return;
+                      }
+                      if (newController.text != confirmController.text) {
+                        setDialogState(() => dialogError = 'New passwords do not match');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        busy = true;
+                        dialogError = null;
+                      });
+
+                      try {
+                        final vaultService = ref.read(vaultServiceProvider);
+                        // Verify current password
+                        await vaultService.unlock(currentController.text);
+
+                        // Rotate password via envelope MEK re-wrapping
+                        await vaultService.changePassword(
+                          currentMek: currentKey,
+                          newPassword: newController.text,
+                        );
+
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Master password successfully rotated! Records preserved intact.'),
+                              backgroundColor: Color(0xFF1A2E22),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          busy = false;
+                          dialogError = e.toString().replaceAll('VaultException: ', '');
+                        });
+                      }
+                    },
+              child: busy
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Text('Rotate Password', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _manageQuickUnlock() async {
+    final quickUnlock = ref.read(quickUnlockServiceProvider);
+    final isEnabled = await quickUnlock.isEnabled();
+    final hasBiometrics = await quickUnlock.isBiometricHardwareAvailable();
+
+    if (!mounted) return;
+
+    if (isEnabled) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surfaceZinc,
+          title: const Text('Quick Unlock Enabled', style: TextStyle(color: AppColors.offWhite, fontSize: 16)),
+          content: const Text(
+            'Quick Unlock is active. You can unlock your vault rapidly using your PIN without re-entering your master password.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('Close'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: AppColors.roseAccent),
+              onPressed: () => Navigator.pop(ctx, 'disable'),
+              child: const Text('Disable Quick Unlock'),
+            ),
+            FirewoodButton(
+              label: 'Change PIN',
+              onPressed: () => Navigator.pop(ctx, 'change'),
+            ),
+          ],
+        ),
+      );
+
+      if (action == 'disable') {
+        await quickUnlock.disableQuickUnlock();
+        _snack('Quick Unlock disabled.');
+        setState(() {});
+      } else if (action == 'change') {
+        _promptSetupQuickUnlock(hasBiometrics);
+      }
+    } else {
+      _promptSetupQuickUnlock(hasBiometrics);
+    }
+  }
+
+  Future<void> _promptSetupQuickUnlock(bool hasBiometrics) async {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
+    bool requireBio = false;
+    String? dialogError;
+    bool busy = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surfaceZinc,
+          title: const Text('Setup Quick Unlock', style: TextStyle(color: AppColors.offWhite, fontSize: 16)),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Set a 4 to 8-digit PIN to quickly unlock your vault after idle timeout without typing your full master password.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                TextField(
+                  controller: pinController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Quick Unlock PIN (4-8 digits)'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: confirmController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Confirm PIN'),
+                ),
+                if (hasBiometrics) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  CheckboxListTile(
+                    title: const Text('Require Fingerprint Verification', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    subtitle: const Text('Prompts system biometric sensor on quick unlock', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                    value: requireBio,
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: AppColors.orangeAccent,
+                    onChanged: (v) => setDialogState(() => requireBio = v ?? false),
+                  ),
+                ],
+                if (dialogError != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Text(dialogError!, style: const TextStyle(color: AppColors.roseAccent, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FirewoodButton(
+              label: 'Enable Quick Unlock',
+              isLoading: busy,
+              onPressed: () async {
+                final pin = pinController.text.trim();
+                final confirm = confirmController.text.trim();
+                if (pin.length < 4 || pin.length > 8) {
+                  setDialogState(() => dialogError = 'PIN must be between 4 and 8 digits');
+                  return;
+                }
+                if (pin != confirm) {
+                  setDialogState(() => dialogError = 'PINs do not match');
+                  return;
+                }
+
+                final mek = ref.read(authProvider);
+                if (mek == null) {
+                  setDialogState(() => dialogError = 'Vault is locked. Unlock first.');
+                  return;
+                }
+
+                setDialogState(() => busy = true);
+                try {
+                  await ref.read(quickUnlockServiceProvider).enableQuickUnlock(
+                    currentMek: mek,
+                    pin: pin,
+                    requireBiometric: requireBio,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _snack('Quick Unlock successfully enabled!');
+                  setState(() {});
+                } catch (e) {
+                  setDialogState(() {
+                    busy = false;
+                    dialogError = e.toString().replaceAll('VaultException: ', '');
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _manageBrowserIntegration() async {
+    final status = await BrowserBridgeService.getManifestStatus();
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final installedCount = status.values.where((v) => v).length;
+          return AlertDialog(
+            backgroundColor: AppColors.surfaceZinc,
+            title: const Row(
+              children: [
+                HugeIcon(
+                  icon: HugeIcons.strokeRoundedGlobe02,
+                  color: AppColors.orangeAccent,
+                  size: 22,
+                  strokeWidth: 1.8,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Browser Integration & Autofill',
+                  style: TextStyle(color: AppColors.offWhite, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Connect your desktop browsers to Firewood for instant zero-knowledge password and 2FA TOTP autofill. Credentials remain securely locked in memory until accessed.',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.coal,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderZinc),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'IPC SOCKET:',
+                              style: TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: ref.watch(browserBridgeEnabledProvider)
+                                    ? AppColors.mintAccent.withOpacity(0.15)
+                                    : AppColors.textMuted.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                ref.watch(browserBridgeEnabledProvider) ? 'LISTENING' : 'DISABLED',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: ref.watch(browserBridgeEnabledProvider)
+                                      ? AppColors.mintAccent
+                                      : AppColors.textMuted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          BrowserBridgeService.defaultSocketPath,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            color: AppColors.offWhite,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  const Text(
+                    'DETECTED BROWSERS:',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...status.entries.map((e) {
+                    final configured = e.value;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            configured ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                            size: 16,
+                            color: configured ? AppColors.mintAccent : AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            e.key,
+                            style: const TextStyle(color: AppColors.offWhite, fontSize: 13),
+                          ),
+                          const Spacer(),
+                          Text(
+                            configured ? 'Configured' : 'Not installed',
+                            style: TextStyle(
+                              color: configured ? AppColors.mintAccent : AppColors.textMuted,
+                              fontSize: 11,
+                              fontWeight: configured ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+              if (installedCount > 0)
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: AppColors.roseAccent),
+                  onPressed: () async {
+                    await BrowserBridgeService.uninstallManifests();
+                    final updated = await BrowserBridgeService.getManifestStatus();
+                    setDialogState(() {
+                      status.clear();
+                      status.addAll(updated);
+                    });
+                    _snack('Browser integration manifests uninstalled.');
+                    setState(() {});
+                  },
+                  child: const Text('Uninstall Manifests'),
+                ),
+              FirewoodButton(
+                label: installedCount > 0 ? 'Reinstall Manifests' : 'Install Browser Integration',
+                icon: HugeIcons.strokeRoundedDownload04,
+                onPressed: () async {
+                  final paths = await BrowserBridgeService.installManifests();
+                  final updated = await BrowserBridgeService.getManifestStatus();
+                  setDialogState(() {
+                    status.clear();
+                    status.addAll(updated);
+                  });
+                  _snack('Installed ${paths.length} browser native messaging manifests!');
+                  setState(() {});
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showAutoTypeTester() async {
+    final available = await AutoTypeService.isAvailable();
+    final testInputController = TextEditingController();
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.surfaceZinc,
+            title: const Row(
+              children: [
+                HugeIcon(
+                  icon: HugeIcons.strokeRoundedKeyboard,
+                  color: AppColors.orangeAccent,
+                  size: 22,
+                  strokeWidth: 1.8,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'AutoType Diagnostic Tester',
+                  style: TextStyle(
+                    color: AppColors.offWhite,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    available
+                        ? 'Simulate typing into any focused window or into the test scratchpad below.'
+                        : 'xdotool is not detected on this Linux system. Synthetic typing is unavailable until xdotool is installed.',
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.coal,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderZinc),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'BACKEND STATUS:',
+                              style: TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: available
+                                    ? AppColors.mintAccent.withOpacity(0.15)
+                                    : AppColors.roseAccent.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                available ? 'AVAILABLE (xdotool)' : 'UNAVAILABLE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: available
+                                      ? AppColors.mintAccent
+                                      : AppColors.roseAccent,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Test Input Scratchpad:',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: testInputController,
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: 'Click here before testing typing...',
+                            filled: true,
+                            fillColor: const Color(0xFF13151D),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(6),
+                              borderSide: const BorderSide(color: Color(0xFF2C3243)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+              if (available)
+                FirewoodButton(
+                  label: 'Simulate Keystrokes',
+                  icon: HugeIcons.strokeRoundedPlay,
+                  onPressed: () async {
+                    final item = DecryptedItem(
+                      itemId: 'test-item',
+                      type: 'login',
+                      title: 'Test',
+                      fields: {
+                        'username': 'firewood-user',
+                        'password': 'test-pass-secret',
+                      },
+                      updatedAt: DateTime.now(),
+                    );
+                    _snack('Typing test sequence in 2s...');
+                    await AutoTypeService.execute(
+                      item: item,
+                      sequence: '{USERNAME}{TAB}{PASSWORD}',
+                      initialCountdownSeconds: 2,
+                    );
+                  },
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showAddVaultDialog() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceZinc,
+        title: const Row(
+          children: [
+            HugeIcon(
+              icon: HugeIcons.strokeRoundedFolder01,
+              color: AppColors.orangeAccent,
+              size: 22,
+              strokeWidth: 1.8,
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Add New Vault',
+              style: TextStyle(
+                color: AppColors.offWhite,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Create a separate vault partition to organize your credentials (e.g. Work, Clients, Personal).',
+                style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Vault Name',
+                  hintText: 'e.g. Work, Finance, Clients',
+                ),
+                onSubmitted: (v) => Navigator.pop(ctx, v),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FirewoodButton(
+            label: 'Add Vault',
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      final currentList = ref.read(availableVaultsProvider);
+      if (!currentList.contains(name)) {
+        ref.read(availableVaultsProvider.notifier).state = [...currentList, name];
+        _snack('Added vault "$name"');
+      }
+    }
+  }
+
   void _showAbout() {
     showDialog(
       context: context,
@@ -347,15 +1113,48 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                       onChanged: (v) => ref.read(clipboardClearProvider.notifier).state = v,
                     ),
                     _Tile(
+                      icon: HugeIcons.strokeRoundedLockPassword,
+                      title: 'Change Master Password',
+                      subtitle: 'Rotate master password instantly via Envelope MEK re-wrapping',
+                      onTap: _showChangePasswordDialog,
+                    ),
+                    _Tile(
                       icon: HugeIcons.strokeRoundedPower,
                       title: 'Lock Vault Now',
                       subtitle: 'Immediately clear the secret key from memory',
                       onTap: () => ref.read(authProvider.notifier).state = null,
                     ),
-                    const _DisabledTile(
-                      icon: HugeIcons.strokeRoundedFingerPrint,
-                      title: 'Biometric Vault Unlock',
-                      subtitle: 'Mobile only',
+                    FutureBuilder<bool>(
+                      future: ref.read(quickUnlockServiceProvider).isEnabled(),
+                      builder: (context, snapshot) {
+                        final enabled = snapshot.data ?? false;
+                        return _Tile(
+                          icon: HugeIcons.strokeRoundedFingerPrint,
+                          title: 'Quick Unlock (PIN & Biometrics)',
+                          subtitle: enabled
+                              ? 'Active: Fast PIN & biometric unlock enabled'
+                              : 'Set a rapid PIN & fingerprint unlock after idle lock',
+                          trailing: enabled
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.mintAccent.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.mintAccent.withOpacity(0.4)),
+                                  ),
+                                  child: const Text(
+                                    'ACTIVE',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.mintAccent,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          onTap: _manageQuickUnlock,
+                        );
+                      },
                     ),
                     const _DisabledTile(
                       icon: HugeIcons.strokeRoundedCamera01,
@@ -407,6 +1206,215 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                 ),
               ),
 
+              // --- BROWSER INTEGRATION ---
+              const _SectionHeader('BROWSER INTEGRATION & AUTOFILL'),
+              _Card(
+                child: Column(
+                  children: [
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final enabled = ref.watch(browserBridgeEnabledProvider);
+                        return _SwitchRow(
+                          icon: HugeIcons.strokeRoundedGlobe02,
+                          title: 'Autofill IPC Bridge',
+                          subtitle: enabled
+                              ? 'Active: Local domain socket listening'
+                              : 'Disabled: Browser communication stopped',
+                          value: enabled,
+                          onChanged: (val) {
+                            ref.read(browserBridgeEnabledProvider.notifier).state = val;
+                          },
+                        );
+                      },
+                    ),
+                    FutureBuilder<Map<String, bool>>(
+                      future: BrowserBridgeService.getManifestStatus(),
+                      builder: (context, snapshot) {
+                        final status = snapshot.data ?? {};
+                        final installedCount = status.values.where((v) => v).length;
+                        return _Tile(
+                          icon: HugeIcons.strokeRoundedBrowser,
+                          title: 'Browser Extension Host',
+                          subtitle: installedCount > 0
+                              ? 'Configured for $installedCount browser(s)'
+                              : 'Install native messaging manifests for Chrome, Brave, Firefox',
+                          trailing: installedCount > 0
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.mintAccent.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.mintAccent.withOpacity(0.4)),
+                                  ),
+                                  child: Text(
+                                    '$installedCount BROWSERS',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.mintAccent,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                          onTap: _manageBrowserIntegration,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              // --- GLOBAL AUTOTYPE & DESKTOP SHELL ---
+              const _SectionHeader('GLOBAL AUTOTYPE & DESKTOP SHELL'),
+              _Card(
+                child: Column(
+                  children: [
+                    FutureBuilder<String>(
+                      future: AutoTypeService.getBackendName(),
+                      builder: (context, snapshot) {
+                        final backend = snapshot.data ?? 'Detecting...';
+                        final isAvail = backend.contains('xdotool');
+                        return _Tile(
+                          icon: HugeIcons.strokeRoundedKeyboard,
+                          title: 'AutoType Engine',
+                          subtitle: 'Zero-knowledge synthetic typing via $backend',
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isAvail
+                                  ? AppColors.mintAccent.withOpacity(0.15)
+                                  : AppColors.roseAccent.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isAvail
+                                    ? AppColors.mintAccent.withOpacity(0.4)
+                                    : AppColors.roseAccent.withOpacity(0.4),
+                              ),
+                            ),
+                            child: Text(
+                              isAvail ? 'AVAILABLE' : 'INSTALL XDOTOOL',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isAvail ? AppColors.mintAccent : AppColors.roseAccent,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _Tile(
+                      icon: HugeIcons.strokeRoundedSlidersHorizontal,
+                      title: 'Default Keystroke Sequence',
+                      subtitle: 'Format used when triggering AutoType on logins',
+                      trailing: HearthDropdown<String>(
+                        value: ref.watch(autoTypeSequenceProvider),
+                        width: 230,
+                        items: const [
+                          HearthDropdownItem(
+                            value: '{USERNAME}{TAB}{PASSWORD}{ENTER}',
+                            label: 'User + Tab + Pass + Enter',
+                            icon: HugeIcons.strokeRoundedKeyboard,
+                          ),
+                          HearthDropdownItem(
+                            value: '{USERNAME}{TAB}{PASSWORD}',
+                            label: 'User + Tab + Pass',
+                            icon: HugeIcons.strokeRoundedKeyboard,
+                          ),
+                          HearthDropdownItem(
+                            value: '{PASSWORD}{ENTER}',
+                            label: 'Password + Enter',
+                            icon: HugeIcons.strokeRoundedKeyboard,
+                          ),
+                        ],
+                        onChanged: (v) => ref.read(autoTypeSequenceProvider.notifier).state = v,
+                      ),
+                    ),
+                    _Tile(
+                      icon: HugeIcons.strokeRoundedTimer01,
+                      title: 'Focus Switch Delay',
+                      subtitle: 'Countdown before typing begins, allowing target window switch',
+                      trailing: HearthDropdown<int>(
+                        value: ref.watch(autoTypeDelaySecondsProvider),
+                        width: 130,
+                        items: const [
+                          HearthDropdownItem(value: 1, label: '1 second', icon: HugeIcons.strokeRoundedTimer01),
+                          HearthDropdownItem(value: 2, label: '2 seconds', icon: HugeIcons.strokeRoundedTimer01),
+                          HearthDropdownItem(value: 3, label: '3 seconds', icon: HugeIcons.strokeRoundedTimer01),
+                          HearthDropdownItem(value: 5, label: '5 seconds', icon: HugeIcons.strokeRoundedTimer01),
+                        ],
+                        onChanged: (v) => ref.read(autoTypeDelaySecondsProvider.notifier).state = v,
+                      ),
+                    ),
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final minimize = ref.watch(minimizeToTrayProvider);
+                        return _SwitchRow(
+                          icon: HugeIcons.strokeRoundedMinimize01,
+                          title: 'Keep Running in Background',
+                          subtitle: 'Minimize to background when window is closed to maintain IPC socket',
+                          value: minimize,
+                          onChanged: (v) => ref.read(minimizeToTrayProvider.notifier).state = v,
+                        );
+                      },
+                    ),
+                    _Tile(
+                      icon: HugeIcons.strokeRoundedPlay,
+                      title: 'Test AutoType Simulator',
+                      subtitle: 'Open scratchpad to test synthetic keystroke injection',
+                      onTap: _showAutoTypeTester,
+                    ),
+                  ],
+                ),
+              ),
+
+              // --- MULTI-VAULT MANAGEMENT ---
+              const _SectionHeader('MULTI-VAULT PARTITIONS'),
+              _Card(
+                child: Column(
+                  children: [
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final vaults = ref.watch(availableVaultsProvider);
+                        return Column(
+                          children: [
+                            for (final v in vaults)
+                              _Tile(
+                                icon: HugeIcons.strokeRoundedFolder01,
+                                title: v,
+                                subtitle: 'Partitioned credential store',
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1F2432),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: const Color(0xFF2C3446)),
+                                  ),
+                                  child: const Text(
+                                    'VAULT',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.orangeAccent,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    _Tile(
+                      icon: HugeIcons.strokeRoundedAdd01,
+                      title: 'Add New Vault Partition',
+                      subtitle: 'Create a new named partition to organize credentials',
+                      onTap: _showAddVaultDialog,
+                    ),
+                  ],
+                ),
+              ),
+
               // --- BACKUP ---
               const _SectionHeader('AUTOMATED BACKUP & RECOVERY'),
               _Card(
@@ -425,6 +1433,13 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                       subtitle: 'Restore from a .firewood file',
                       enabled: !_busy,
                       onTap: _importVault,
+                    ),
+                    _Tile(
+                      icon: HugeIcons.strokeRoundedFolderTransfer,
+                      title: 'Import from Other Vaults',
+                      subtitle: 'Import Bitwarden JSON, 1Password, or CSV records',
+                      enabled: !_busy,
+                      onTap: _importFromOtherVault,
                     ),
                     _Tile(
                       icon: HugeIcons.strokeRoundedFileKey,

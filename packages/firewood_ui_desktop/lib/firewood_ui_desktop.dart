@@ -1,5 +1,4 @@
-/// Desktop-only Firewood components.
-library firewood_ui_desktop;
+library;
 
 export 'src/hearth_title_bar.dart';
 export 'src/hearth_rail.dart';

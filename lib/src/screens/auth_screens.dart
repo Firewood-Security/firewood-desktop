@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firewood_core/firewood_core.dart';
 import 'package:firewood_design/firewood_design.dart';
 import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
+import 'package:hugeicons/hugeicons.dart';
 
 import '../providers.dart';
 
@@ -104,12 +105,36 @@ class UnlockScreen extends ConsumerStatefulWidget {
 
 class _UnlockScreenState extends ConsumerState<UnlockScreen> {
   final _password = TextEditingController();
+  final _pin = TextEditingController();
   String? _error;
   bool _busy = false;
+  bool _quickUnlockAvailable = false;
+  bool _useQuickUnlock = false;
+  bool _requiresBiometric = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkQuickUnlock();
+  }
+
+  Future<void> _checkQuickUnlock() async {
+    final qu = ref.read(quickUnlockServiceProvider);
+    final enabled = await qu.isEnabled();
+    if (enabled && mounted) {
+      final bio = await qu.requiresBiometric();
+      setState(() {
+        _quickUnlockAvailable = true;
+        _useQuickUnlock = true;
+        _requiresBiometric = bio;
+      });
+    }
+  }
 
   @override
   void dispose() {
     _password.dispose();
+    _pin.dispose();
     super.dispose();
   }
 
@@ -119,8 +144,16 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       _error = null;
     });
     try {
-      final key = await ref.read(vaultServiceProvider).unlock(_password.text);
-      ref.read(authProvider.notifier).state = key;
+      if (_quickUnlockAvailable && _useQuickUnlock) {
+        final key = await ref.read(quickUnlockServiceProvider).unlockWithPin(_pin.text.trim());
+        ref.read(authProvider.notifier).state = key;
+      } else {
+        final key = await ref.read(vaultServiceProvider).unlockAndMigrate(
+              password: _password.text,
+              itemService: ref.read(itemServiceProvider),
+            );
+        ref.read(authProvider.notifier).state = key;
+      }
     } on VaultException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
@@ -132,31 +165,82 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isQuick = _quickUnlockAvailable && _useQuickUnlock;
+
     return AuthScaffold(
       logo: Image.asset('assets/FWS.png', width: 76, height: 76),
-      title: AppStrings.unlockVault,
-      subtitle: AppStrings.unlockSubtitle,
+      title: isQuick ? 'Quick Unlock' : AppStrings.unlockVault,
+      subtitle: isQuick
+          ? 'Enter your PIN${_requiresBiometric ? ' & verify fingerprint' : ''} to unlock.'
+          : AppStrings.unlockSubtitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _password,
-            obscureText: true,
-            autofocus: true,
-            onSubmitted: (_) => _unlock(),
-            decoration: const InputDecoration(labelText: AppStrings.masterPassword),
-          ),
+          if (isQuick) ...[
+            TextField(
+              controller: _pin,
+              obscureText: true,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              onSubmitted: (_) => _unlock(),
+              decoration: InputDecoration(
+                labelText: 'Quick Unlock PIN',
+                prefixIcon: const HugeIcon(
+                  icon: HugeIcons.strokeRoundedSquareLock02,
+                  size: 20,
+                  color: AppColors.orangeAccent,
+                  strokeWidth: 1.8,
+                ),
+                suffixIcon: _requiresBiometric
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: HugeIcon(
+                          icon: HugeIcons.strokeRoundedFingerPrint,
+                          size: 20,
+                          color: AppColors.mintAccent,
+                          strokeWidth: 1.8,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          ] else ...[
+            TextField(
+              controller: _password,
+              obscureText: true,
+              autofocus: true,
+              onSubmitted: (_) => _unlock(),
+              decoration: const InputDecoration(labelText: AppStrings.masterPassword),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.md),
             Text(_error!, style: const TextStyle(color: AppColors.roseAccent, fontSize: 12)),
           ],
           const SizedBox(height: AppSpacing.xl),
           FirewoodButton(
-            label: AppStrings.unlock,
+            label: isQuick ? 'Quick Unlock' : AppStrings.unlock,
             onPressed: _unlock,
             isLoading: _busy,
             fullWidth: true,
           ),
+          if (_quickUnlockAvailable) ...[
+            const SizedBox(height: AppSpacing.md),
+            Center(
+              child: TextButton(
+                onPressed: () {
+                  setState(() {
+                    _useQuickUnlock = !_useQuickUnlock;
+                    _error = null;
+                  });
+                },
+                child: Text(
+                  isQuick ? 'Unlock with Master Password instead' : 'Use Quick Unlock PIN instead',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

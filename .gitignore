@@ -9,3 +9,8 @@ pubspec_overrides.yaml
 # IDE
 .idea/
 *.iml
+
+# Environment
+.env
+.env.*
+*.env
