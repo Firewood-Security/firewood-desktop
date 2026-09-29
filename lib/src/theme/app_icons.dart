@@ -155,7 +155,9 @@ class AppIcon extends StatelessWidget {
       return HugeIcons.strokeRoundedAlert02;
     } else if (lower.contains('copy')) {
       return HugeIcons.strokeRoundedCopy01;
-    } else if (lower.contains('clock') || lower.contains('history') || lower.contains('timer')) {
+    } else if (lower.contains('clock') ||
+        lower.contains('history') ||
+        lower.contains('timer')) {
       return HugeIcons.strokeRoundedClock01;
     } else if (lower.contains('search')) {
       return HugeIcons.strokeRoundedSearch01;
@@ -183,7 +185,8 @@ class AppIcon extends StatelessWidget {
     if (icon is String) {
       final double displaySize = size;
       final rawPath = (icon as String).trim();
-      final assetPath = rawPath.startsWith('/') ? rawPath.substring(1) : rawPath;
+      final assetPath =
+          rawPath.startsWith('/') ? rawPath.substring(1) : rawPath;
 
       glyph = SizedBox(
         width: displaySize,

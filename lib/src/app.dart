@@ -38,7 +38,8 @@ class _DesktopFrame extends ConsumerStatefulWidget {
   ConsumerState<_DesktopFrame> createState() => _DesktopFrameState();
 }
 
-class _DesktopFrameState extends ConsumerState<_DesktopFrame> with WindowListener {
+class _DesktopFrameState extends ConsumerState<_DesktopFrame>
+    with WindowListener {
   @override
   void initState() {
     super.initState();
@@ -62,8 +63,13 @@ class _DesktopFrameState extends ConsumerState<_DesktopFrame> with WindowListene
   void onWindowClose() async {
     final minimizeToTray = ref.read(minimizeToTrayProvider);
     if (minimizeToTray) {
+      // Hidden, process alive: the pending auto-clear timer keeps running.
       await windowManager.hide();
     } else {
+      // V-018: wipe the clipboard entry before the process dies — after
+      // destroy() the pending auto-clear timer can never fire. Best-effort:
+      // crashes/SIGKILL bypass this (documented in secure_clipboard.dart).
+      SecureClipboard.clear();
       await windowManager.destroy();
     }
   }
@@ -151,7 +157,8 @@ class _AuthGate extends ConsumerWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: AppColors.coal,
-            body: Center(child: CircularProgressIndicator(color: AppColors.ember)),
+            body: Center(
+                child: CircularProgressIndicator(color: AppColors.ember)),
           );
         }
         if (snapshot.data != true) return const SetupScreen();

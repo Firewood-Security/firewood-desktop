@@ -35,7 +35,8 @@ void main() {
     print('  2. Sender scans QR and parses parameters:');
     print('     - Device Name: ${parsed.deviceName}');
     print('     - Session Nonce: ${parsed.nonce}');
-    print('     - Receiver Ephemeral PK: ${base64Url.encode(parsed.publicKey.bytes)}');
+    print(
+        '     - Receiver Ephemeral PK: ${base64Url.encode(parsed.publicKey.bytes)}');
 
     // 4. Sender generates ephemeral keypair & performs ECDH
     final senderKp = await airShare.generateKeyPair();
@@ -67,7 +68,8 @@ void main() {
 
     print('  3. Sender derives 256-bit session key via HKDF-SHA256');
     print('  4. Sender encrypts payload via ChaCha20-Poly1305:');
-    print('     - Ciphertext size: ${cipherBytes.length} bytes (incl. 12B nonce + 16B MAC)');
+    print(
+        '     - Ciphertext size: ${cipherBytes.length} bytes (incl. 12B nonce + 16B MAC)');
 
     // 6. Receiver derives matching session key
     final senderPk = await senderKp.extractPublicKey();
@@ -92,7 +94,8 @@ void main() {
     print('     - Password: ${decryptedPayload.data['password']}');
 
     expect(decryptedPayload.title, equals(secretPayload.title));
-    expect(decryptedPayload.data['password'], equals('Firewood#DbSuperSecret2026!'));
+    expect(decryptedPayload.data['password'],
+        equals('Firewood#DbSuperSecret2026!'));
     print('  => SPARK MODE COMPLETED WITH ZERO LEAKS!\n');
 
     // -------------------------------------------------------------
@@ -136,12 +139,15 @@ void main() {
     expect(flameCodeA.length, equals(4));
     expect(int.tryParse(flameCodeA), isNotNull);
 
-    print('  3. Visual match verified by users: "$flameCodeA" == "$flameCodeB"');
+    print(
+        '  3. Visual match verified by users: "$flameCodeA" == "$flameCodeB"');
     print('     => Both users confirm 4-digit code matches on their screens.');
 
     // 4. Transmission after confirmation
-    final sessionKeyA = await airShare.deriveSessionKey(sharedSecret: secretA, salt: bleSalt);
-    final sessionKeyB = await airShare.deriveSessionKey(sharedSecret: secretB, salt: bleSalt);
+    final sessionKeyA =
+        await airShare.deriveSessionKey(sharedSecret: secretA, salt: bleSalt);
+    final sessionKeyB =
+        await airShare.deriveSessionKey(sharedSecret: secretB, salt: bleSalt);
 
     final flameEncrypted = await airShare.encryptPayload(
       payload: secretPayload,

@@ -51,7 +51,9 @@ class DesktopSecurityReport {
             passwords.add(pw);
             seen[pw] = (seen[pw] ?? 0) + 1;
           }
-          if ((item.fields['totp_secret']?.toString() ?? '').trim().isNotEmpty) {
+          if ((item.fields['totp_secret']?.toString() ?? '')
+              .trim()
+              .isNotEmpty) {
             totpActive++;
           }
           break;
@@ -79,7 +81,8 @@ class DesktopSecurityReport {
         weak++;
       }
     }
-    final reused = seen.values.where((c) => c > 1).fold<int>(0, (sum, c) => sum + c);
+    final reused =
+        seen.values.where((c) => c > 1).fold<int>(0, (sum, c) => sum + c);
 
     final int score;
     if (passwords.isEmpty) {
@@ -89,7 +92,8 @@ class DesktopSecurityReport {
       score = raw.clamp(0, 100);
     }
 
-    final sorted = [...items]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final sorted = [...items]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     return DesktopSecurityReport(
       total: items.length,

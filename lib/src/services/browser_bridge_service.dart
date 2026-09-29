@@ -18,16 +18,43 @@ class BrowserBridgeService {
   ServerSocket? _server;
   StreamSubscription<Socket>? _serverSubscription;
   bool _isListening = false;
+  String? _sessionToken;
 
   bool get isListening => _isListening;
 
-  static String get defaultSocketPath {
+  /// Per-session token every bridge command must present (V-002).
+  /// Written to `<socket>.token` (0600) for the native host to read.
+  String? get sessionToken => _sessionToken;
+
+  /// Private directory for IPC sockets. Never `/tmp`: its world-writable
+  /// sticky namespace lets another local user pre-create our socket path and
+  /// hijack or deny the bridge (V-023). Returns null when no private
+  /// directory is available — the bridge then stays disabled (fail closed).
+  static String? get _ipcDir {
     final runtimeDir = Platform.environment['XDG_RUNTIME_DIR'];
     if (runtimeDir != null && Directory(runtimeDir).existsSync()) {
-      return '$runtimeDir/firewood-ipc.sock';
+      return runtimeDir; // systemd: mode 0700
     }
-    final user = Platform.environment['USER'] ?? 'user';
-    return '/tmp/firewood-ipc-$user.sock';
+    if (Platform.isMacOS) {
+      // macOS $TMPDIR is a per-user private (0700) directory.
+      final tmp = Platform.environment['TMPDIR'];
+      if (tmp != null && Directory(tmp).existsSync()) return tmp;
+    }
+    final home = Platform.environment['HOME'];
+    if (home == null || home.isEmpty) return null;
+    final dir = Directory('$home/.cache/firewood');
+    try {
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      final res = Process.runSync('chmod', ['700', dir.path]);
+      return res.exitCode == 0 ? dir.path : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String? get defaultSocketPath {
+    final dir = _ipcDir;
+    return dir == null ? null : '$dir/firewood-ipc.sock';
   }
 
   static String get defaultHostBinaryPath {
@@ -43,6 +70,10 @@ class BrowserBridgeService {
     if (_isListening) return;
 
     final socketPath = customSocketPath ?? defaultSocketPath;
+    if (socketPath == null) {
+      // V-002: no private runtime directory → do not expose the bridge.
+      return;
+    }
     final socketFile = File(socketPath);
 
     // Clean up stale socket file if it exists
@@ -69,28 +100,69 @@ class BrowserBridgeService {
         InternetAddress(socketPath, type: InternetAddressType.unix),
         0,
       );
-
-      // Enforce 0600 permissions on the created socket
-      if (Platform.isLinux || Platform.isMacOS) {
-        try {
-          await Process.run('chmod', ['600', socketPath]);
-        } catch (_) {}
-      }
-
-      _isListening = true;
-
-      _serverSubscription = _server!.listen(
-        (socket) => _handleClient(socket, reader),
-        onError: (err) {
-          _isListening = false;
-        },
-        onDone: () {
-          _isListening = false;
-        },
-      );
     } catch (_) {
       _isListening = false;
+      return;
     }
+
+    // V-002/V-023: lock down permissions and FAIL CLOSED if we cannot —
+    // never continue with an umask-permissive socket.
+    if (Platform.isLinux || Platform.isMacOS) {
+      try {
+        final res = await Process.run('chmod', ['600', socketPath]);
+        if (res.exitCode != 0) {
+          await _server!.close();
+          _server = null;
+          try {
+            socketFile.deleteSync();
+          } catch (_) {}
+          _isListening = false;
+          return;
+        }
+      } catch (_) {
+        await _server!.close();
+        _server = null;
+        _isListening = false;
+        return;
+      }
+    }
+
+    // V-002: mint a per-session token; every command must present it.
+    // The token file lives beside the socket (0600 inside a private dir),
+    // where the native host can read it but nothing outside our user can.
+    try {
+      final rnd = Random.secure();
+      final token = List<int>.generate(32, (_) => rnd.nextInt(256))
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      final tokenFile = File('$socketPath.token');
+      tokenFile.writeAsStringSync(token, flush: true);
+      if (Platform.isLinux || Platform.isMacOS) {
+        final res = await Process.run('chmod', ['600', tokenFile.path]);
+        if (res.exitCode != 0) throw Exception('chmod token failed');
+      }
+      _sessionToken = token;
+    } catch (_) {
+      await _server!.close();
+      _server = null;
+      try {
+        socketFile.deleteSync();
+      } catch (_) {}
+      _isListening = false;
+      return;
+    }
+
+    _isListening = true;
+
+    _serverSubscription = _server!.listen(
+      (socket) => _handleClient(socket, reader),
+      onError: (err) {
+        _isListening = false;
+      },
+      onDone: () {
+        _isListening = false;
+      },
+    );
   }
 
   /// Stops the IPC server and cleans up socket file
@@ -100,23 +172,35 @@ class BrowserBridgeService {
     _serverSubscription = null;
     await _server?.close();
     _server = null;
+    _sessionToken = null;
 
     final socketPath = customSocketPath ?? defaultSocketPath;
-    final socketFile = File(socketPath);
-    if (socketFile.existsSync()) {
-      try {
-        socketFile.deleteSync();
-      } catch (_) {}
+    if (socketPath == null) return;
+    for (final path in [socketPath, '$socketPath.token']) {
+      final socketFile = File(path);
+      if (socketFile.existsSync()) {
+        try {
+          socketFile.deleteSync();
+        } catch (_) {}
+      }
     }
   }
 
-  void _handleClient(Socket socket, T Function<T>(ProviderListenable<T>) reader) {
+  void _handleClient(
+      Socket socket, T Function<T>(ProviderListenable<T>) reader) {
     final buffer = StringBuffer();
 
     socket.listen(
       (data) async {
         buffer.write(utf8.decode(data));
         final content = buffer.toString();
+
+        // V-048: cap message size — never buffer unbounded input from a
+        // socket peer, even one that passed the token check.
+        if (content.length > 10 * 1024 * 1024) {
+          socket.destroy();
+          return;
+        }
 
         if (content.contains('\n')) {
           final lines = content.split('\n');
@@ -150,6 +234,14 @@ class BrowserBridgeService {
   ) async {
     try {
       final message = jsonDecode(rawJson) as Map<String, dynamic>;
+
+      // V-002: every command must present this session's token. The token
+      // file sits inside a private (0700) directory, so only our own user's
+      // native host can obtain it; anything else gets a bare refusal.
+      if (!_authOk(message['auth']?.toString())) {
+        return {'status': 'error', 'error': 'unauthorized'};
+      }
+
       final action = message['action']?.toString() ?? 'ping';
 
       switch (action) {
@@ -193,7 +285,23 @@ class BrowserBridgeService {
     }
   }
 
-  Map<String, dynamic> _handleStatus(T Function<T>(ProviderListenable<T>) reader) {
+  /// Constant-time comparison of the presented token against this session's
+  /// token (V-002). Returns false for null/empty/wrong-length input.
+  bool _authOk(String? presented) {
+    final expected = _sessionToken;
+    if (expected == null || presented == null || presented.isEmpty) {
+      return false;
+    }
+    if (presented.length != expected.length) return false;
+    var diff = 0;
+    for (var i = 0; i < expected.length; i++) {
+      diff |= presented.codeUnitAt(i) ^ expected.codeUnitAt(i);
+    }
+    return diff == 0;
+  }
+
+  Map<String, dynamic> _handleStatus(
+      T Function<T>(ProviderListenable<T>) reader) {
     final key = reader(authProvider);
     final isUnlocked = key != null;
 
@@ -242,13 +350,17 @@ class BrowserBridgeService {
         continue;
       }
 
-      final itemUrl = (item.fields['url'] ?? item.fields['website'] ?? '').toString();
+      final itemUrl =
+          (item.fields['url'] ?? item.fields['website'] ?? '').toString();
       final itemTitle = item.title;
 
-      if (_matchesDomain(itemUrl, itemTitle, cleanDomain)) {
-        final username = (item.fields['username'] ?? item.fields['email'] ?? '').toString();
+      if (_matchesDomain(itemUrl, cleanDomain)) {
+        final username =
+            (item.fields['username'] ?? item.fields['email'] ?? '').toString();
         final password = (item.fields['password'] ?? '').toString();
-        final totpSecret = (item.fields['totp_secret'] ?? item.fields['totpSecret'] ?? '').toString();
+        final totpSecret =
+            (item.fields['totp_secret'] ?? item.fields['totpSecret'] ?? '')
+                .toString();
 
         String? liveTotp;
         if (totpSecret.trim().isNotEmpty) {
@@ -291,7 +403,8 @@ class BrowserBridgeService {
     if (key == null) {
       return {
         'status': 'locked',
-        'error': 'Vault is locked. Unlock Firewood desktop app to save credentials.',
+        'error':
+            'Vault is locked. Unlock Firewood desktop app to save credentials.',
       };
     }
 
@@ -400,35 +513,63 @@ class BrowserBridgeService {
     return s;
   }
 
-  /// Checks if stored item's URL or title matches the requested target domain
-  static bool _matchesDomain(String itemUrl, String itemTitle, String targetDomain) {
+  /// Checks if the stored item's URL is the same site as the requested host.
+  ///
+  /// V-014: strict matching only —
+  ///  * the item must have a URL (URL-less items never match),
+  ///  * match on exact host equality, or
+  ///  * equality of registrable domains (approximate eTLD+1), which covers
+  ///    subdomains in BOTH directions without reaching other sites.
+  /// Title text is never consulted: a title containing "mail" must not
+  /// authorize a fetch of credentials for mail.google.com.
+  static bool _matchesDomain(String itemUrl, String targetDomain) {
     if (targetDomain.isEmpty) return false;
+    final itemHost = _extractCleanDomain(itemUrl);
+    if (itemHost.isEmpty) return false; // no URL stored → no match
 
-    final cleanItemDomain = _extractCleanDomain(itemUrl);
-    final cleanTitle = itemTitle.trim().toLowerCase();
-    final cleanTarget = targetDomain.toLowerCase();
+    final target = targetDomain.toLowerCase();
+    if (itemHost == target) return true;
 
-    // Exact domain match
-    if (cleanItemDomain == cleanTarget) return true;
+    final itemReg = _registrableDomain(itemHost);
+    final targetReg = _registrableDomain(target);
+    if (itemReg.isEmpty || targetReg.isEmpty) return false;
+    return itemReg == targetReg;
+  }
 
-    // Subdomain match: item is github.com, target is auth.github.com
-    if (cleanTarget.endsWith('.$cleanItemDomain')) return true;
+  /// Approximate registrable domain (eTLD+1) for a host.
+  ///
+  /// Uses the last two labels, or the last three when the TLD is a
+  /// two-letter country code with a common second-level registry label
+  /// (github.co.uk → github.co.uk, not co.uk). Pure-numeric hosts (IPv4)
+  /// and single-label hosts are returned unchanged so they only ever match
+  /// exactly.
+  static String _registrableDomain(String host) {
+    if (host.isEmpty) return '';
+    final labels =
+        host.split('.').where((l) => l.isNotEmpty).toList(growable: false);
+    if (labels.length <= 2) return host;
 
-    // Reverse subdomain: item is auth.github.com, target is github.com
-    if (cleanItemDomain.endsWith('.$cleanTarget')) return true;
+    final last = labels[labels.length - 1];
+    final isIp = labels.every((l) => int.tryParse(l) != null);
+    if (isIp) return host;
 
-    // Title contains target or target contains title (e.g. Title "GitHub", Target "github.com")
-    final targetBase = cleanTarget.contains('.')
-        ? cleanTarget.substring(0, cleanTarget.indexOf('.'))
-        : cleanTarget;
-
-    if (targetBase.length >= 3) {
-      if (cleanTitle == targetBase || cleanTitle.contains(targetBase)) {
-        return true;
-      }
+    const secondLevelRegistry = {
+      'co',
+      'com',
+      'org',
+      'net',
+      'gov',
+      'ac',
+      'edu',
+      'mil',
+      'nom',
+      'web',
+    };
+    if (last.length == 2 &&
+        secondLevelRegistry.contains(labels[labels.length - 2])) {
+      return labels.sublist(labels.length - 3).join('.');
     }
-
-    return false;
+    return labels.sublist(labels.length - 2).join('.');
   }
 
   // --- Browser Native Messaging Manifest Management ---
@@ -456,8 +597,11 @@ class BrowserBridgeService {
       'description': 'Firewood Password Manager Native Messaging Host',
       'path': binaryPath,
       'type': 'stdio',
+      // V-001: pinned to the Firewood extension ID only (derived from
+      // firewood-browser-extension/extension_key.pem). A wildcard here would
+      // let ANY installed extension query plaintext credentials.
       'allowed_origins': [
-        'chrome-extension://*/',
+        'chrome-extension://ifmolflcokffbmccpbkgeoakmgbpboep/',
       ],
     };
 
@@ -466,9 +610,9 @@ class BrowserBridgeService {
       'description': 'Firewood Password Manager Native Messaging Host',
       'path': binaryPath,
       'type': 'stdio',
+      // Matches browser_specific_settings.gecko.id in manifest.json (V-046).
       'allowed_extensions': [
-        'firewood-extension@firewood.security',
-        'firewood@firewood.net',
+        'firewood@firewood.security',
       ],
     };
 

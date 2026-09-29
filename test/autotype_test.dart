@@ -14,11 +14,14 @@ void main() {
       expect(backend, isNotEmpty);
     });
 
-    test('defaultSequence constant is standard username-tab-password-enter', () {
-      expect(AutoTypeService.defaultSequence, equals('{USERNAME}{TAB}{PASSWORD}{ENTER}'));
+    test('defaultSequence constant is standard username-tab-password-enter',
+        () {
+      expect(AutoTypeService.defaultSequence,
+          equals('{USERNAME}{TAB}{PASSWORD}{ENTER}'));
     });
 
-    test('executes on unavailable platform gracefully or runs if available', () async {
+    test('executes on unavailable platform gracefully or runs if available',
+        () async {
       final item = DecryptedItem(
         itemId: 'item-1',
         type: 'login',

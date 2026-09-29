@@ -138,7 +138,9 @@ class SecurityAdvisorEngine {
     for (final item in items) {
       final isLogin = item.type.toLowerCase() == 'login';
       final password = item.fields['password']?.toString() ?? '';
-      final totp = (item.fields['totp_secret'] ?? item.fields['totpSecret'])?.toString() ?? '';
+      final totp = (item.fields['totp_secret'] ?? item.fields['totpSecret'])
+              ?.toString() ??
+          '';
 
       if (isLogin) {
         totalLogins++;
@@ -152,7 +154,8 @@ class SecurityAdvisorEngine {
               category: SecurityTipCategory.weakPasswords,
               severity: SecuritySeverity.critical,
               item: item,
-              detail: '${password.length} characters (critical: min 8 required)',
+              detail:
+                  '${password.length} characters (critical: min 8 required)',
             ));
           } else if (password.length < kWeakWarnBelow ||
               !_hasGoodEntropy(password)) {
@@ -160,7 +163,8 @@ class SecurityAdvisorEngine {
               category: SecurityTipCategory.weakPasswords,
               severity: SecuritySeverity.warn,
               item: item,
-              detail: '${password.length} chars (recommend 16+ with mixed chars)',
+              detail:
+                  '${password.length} chars (recommend 16+ with mixed chars)',
             ));
           } else {
             strongCount++;
@@ -213,7 +217,8 @@ class SecurityAdvisorEngine {
       groups.add(SecurityFindingGroup(
         category: SecurityTipCategory.weakPasswords,
         severity: weakIssues.first.severity,
-        headline: '${weakIssues.length} Weak ${weakIssues.length == 1 ? "Password" : "Passwords"}',
+        headline:
+            '${weakIssues.length} Weak ${weakIssues.length == 1 ? "Password" : "Passwords"}',
         advice: 'Upgrade to 16+ character high-entropy randomized credentials',
         issues: weakIssues,
       ));
@@ -223,8 +228,10 @@ class SecurityAdvisorEngine {
       groups.add(SecurityFindingGroup(
         category: SecurityTipCategory.reusedPasswords,
         severity: SecuritySeverity.critical,
-        headline: '${reusedIssues.length} Reused ${reusedIssues.length == 1 ? "Password" : "Passwords"}',
-        advice: 'Generate unique credentials per service to prevent credential stuffing',
+        headline:
+            '${reusedIssues.length} Reused ${reusedIssues.length == 1 ? "Password" : "Passwords"}',
+        advice:
+            'Generate unique credentials per service to prevent credential stuffing',
         issues: reusedIssues,
       ));
     }
@@ -234,7 +241,8 @@ class SecurityAdvisorEngine {
         category: SecurityTipCategory.missing2FA,
         severity: SecuritySeverity.info,
         headline: '${missing2FAIssues.length} Accounts Without 2FA',
-        advice: 'Add TOTP authenticator secrets to protect against unauthorized logins',
+        advice:
+            'Add TOTP authenticator secrets to protect against unauthorized logins',
         issues: missing2FAIssues,
       ));
     }
@@ -244,15 +252,21 @@ class SecurityAdvisorEngine {
         category: SecurityTipCategory.staleCredentials,
         severity: SecuritySeverity.info,
         headline: '${staleIssues.length} Stale Credentials',
-        advice: 'Rotate credentials that have not been refreshed in over 120 days',
+        advice:
+            'Rotate credentials that have not been refreshed in over 120 days',
         issues: staleIssues,
       ));
     }
 
     // Calculate score 0-100
     int score = 100;
-    score -= (weakIssues.where((i) => i.severity == SecuritySeverity.critical).length * 15);
-    score -= (weakIssues.where((i) => i.severity == SecuritySeverity.warn).length * 5);
+    score -= (weakIssues
+            .where((i) => i.severity == SecuritySeverity.critical)
+            .length *
+        15);
+    score -=
+        (weakIssues.where((i) => i.severity == SecuritySeverity.warn).length *
+            5);
     score -= (reusedIssues.length * 10);
     if (totalLogins >= kTotpPenaltyMinLogins) {
       score -= (missing2FAIssues.length * 3);

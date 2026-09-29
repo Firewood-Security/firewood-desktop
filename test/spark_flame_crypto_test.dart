@@ -49,14 +49,25 @@ void main() {
     expect(aBytes, equals(bBytes));
 
     // Compute 4 digit number
-    final aCode = (((aBytes[0] << 24) | (aBytes[1] << 16) | (aBytes[2] << 8) | aBytes[3]).abs() % 9000 + 1000).toString();
-    final bCode = (((bBytes[0] << 24) | (bBytes[1] << 16) | (bBytes[2] << 8) | bBytes[3]).abs() % 9000 + 1000).toString();
+    final aCode =
+        (((aBytes[0] << 24) | (aBytes[1] << 16) | (aBytes[2] << 8) | aBytes[3])
+                        .abs() %
+                    9000 +
+                1000)
+            .toString();
+    final bCode =
+        (((bBytes[0] << 24) | (bBytes[1] << 16) | (bBytes[2] << 8) | bBytes[3])
+                        .abs() %
+                    9000 +
+                1000)
+            .toString();
 
     expect(aCode, equals(bCode));
     expect(aCode.length, equals(4));
   });
 
-  test('ChaCha20-Poly1305 encryption/decryption with HKDF derived key', () async {
+  test('ChaCha20-Poly1305 encryption/decryption with HKDF derived key',
+      () async {
     final cipher = Chacha20.poly1305Aead();
     final secretKey = SecretKey(List<int>.generate(32, (i) => i));
     final plaintext = utf8.encode('Top secret credentials');

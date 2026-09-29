@@ -9,6 +9,7 @@ import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import '../providers.dart';
+import '../services/unlock_throttle_service.dart';
 
 class SetupScreen extends ConsumerStatefulWidget {
   const SetupScreen({super.key});
@@ -70,18 +71,22 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
             controller: _password,
             obscureText: true,
             autofocus: true,
-            decoration: const InputDecoration(labelText: AppStrings.masterPassword),
+            decoration:
+                const InputDecoration(labelText: AppStrings.masterPassword),
           ),
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _confirm,
             obscureText: true,
             onSubmitted: (_) => _create(),
-            decoration: const InputDecoration(labelText: AppStrings.confirmPassword),
+            decoration:
+                const InputDecoration(labelText: AppStrings.confirmPassword),
           ),
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text(_error!, style: const TextStyle(color: AppColors.roseAccent, fontSize: 12)),
+            Text(_error!,
+                style:
+                    const TextStyle(color: AppColors.roseAccent, fontSize: 12)),
           ],
           const SizedBox(height: AppSpacing.xl),
           FirewoodButton(
@@ -144,17 +149,33 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       _error = null;
     });
     try {
+      // V-010: persisted exponential backoff — mirror of the mobile native
+      // schedule (5 s → 300 s). Applies to both the password and the
+      // quick-unlock PIN paths before any verifier is touched.
+      final lockout = UnlockThrottleService.remainingLockout();
+      if (lockout > Duration.zero) {
+        setState(() =>
+            _error = 'Too many failed attempts. Wait ${lockout.inSeconds}s.');
+        return;
+      }
+
       if (_quickUnlockAvailable && _useQuickUnlock) {
-        final key = await ref.read(quickUnlockServiceProvider).unlockWithPin(_pin.text.trim());
+        final key = await ref
+            .read(quickUnlockServiceProvider)
+            .unlockWithPin(_pin.text.trim());
+        await UnlockThrottleService.reset();
         ref.read(authProvider.notifier).state = key;
       } else {
         final key = await ref.read(vaultServiceProvider).unlockAndMigrate(
               password: _password.text,
               itemService: ref.read(itemServiceProvider),
             );
+        await UnlockThrottleService.reset();
         ref.read(authProvider.notifier).state = key;
       }
     } on VaultException catch (e) {
+      // V-010: wrong password / wrong PIN / tampered payload all count.
+      await UnlockThrottleService.recordFailure();
       setState(() => _error = e.message);
     } catch (e) {
       setState(() => _error = e.toString());
@@ -210,12 +231,15 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
               obscureText: true,
               autofocus: true,
               onSubmitted: (_) => _unlock(),
-              decoration: const InputDecoration(labelText: AppStrings.masterPassword),
+              decoration:
+                  const InputDecoration(labelText: AppStrings.masterPassword),
             ),
           ],
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text(_error!, style: const TextStyle(color: AppColors.roseAccent, fontSize: 12)),
+            Text(_error!,
+                style:
+                    const TextStyle(color: AppColors.roseAccent, fontSize: 12)),
           ],
           const SizedBox(height: AppSpacing.xl),
           FirewoodButton(
@@ -235,8 +259,11 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
                   });
                 },
                 child: Text(
-                  isQuick ? 'Unlock with Master Password instead' : 'Use Quick Unlock PIN instead',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  isQuick
+                      ? 'Unlock with Master Password instead'
+                      : 'Use Quick Unlock PIN instead',
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
               ),
             ),

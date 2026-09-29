@@ -19,6 +19,7 @@ void main() {
       publicKey: pk,
       nonce: nonce,
       deviceName: deviceName,
+      token: 'TEST-TOKEN-abc123',
     );
 
     expect(uri.startsWith('firewood://spark?'), isTrue);
@@ -27,9 +28,20 @@ void main() {
     expect(parsed.publicKey.bytes, equals(pk.bytes));
     expect(parsed.nonce, equals(nonce));
     expect(parsed.deviceName, equals(deviceName));
+    // V-005: the transfer token must survive the QR roundtrip.
+    expect(parsed.token, equals('TEST-TOKEN-abc123'));
+
+    // V-005: no token in the URI ⇒ parsed as null (sender will be rejected).
+    final uriNoToken = service.createSparkUri(
+      publicKey: pk,
+      nonce: nonce,
+      deviceName: deviceName,
+    );
+    expect(service.parseSparkUri(uriNoToken).token, isNull);
   });
 
-  test('Flame Code derivation generates matching 4-digit code on both peers', () async {
+  test('Flame Code derivation generates matching 4-digit code on both peers',
+      () async {
     final aliceKp = await service.generateKeyPair();
     final alicePk = await aliceKp.extractPublicKey();
 
@@ -64,7 +76,8 @@ void main() {
     expect(int.parse(aliceCode), inInclusiveRange(1000, 9999));
   });
 
-  test('AirSharePayload encryption and decryption with derived session key', () async {
+  test('AirSharePayload encryption and decryption with derived session key',
+      () async {
     final aliceKp = await service.generateKeyPair();
     final alicePk = await aliceKp.extractPublicKey();
 

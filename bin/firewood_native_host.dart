@@ -9,13 +9,46 @@ import 'dart:typed_data';
 
 const String hostIdentifier = 'net.firewood.browser_host';
 
-String get defaultSocketPath {
+/// Private IPC directory. Mirrors `BrowserBridgeService._ipcDir` in the
+/// desktop app — both sides must agree. Never `/tmp`: world-writable sticky
+/// namespace lets another local user pre-create the socket path (V-023).
+String? get ipcDir {
   final runtimeDir = Platform.environment['XDG_RUNTIME_DIR'];
   if (runtimeDir != null && Directory(runtimeDir).existsSync()) {
-    return '$runtimeDir/firewood-ipc.sock';
+    return runtimeDir; // systemd: mode 0700
   }
-  final user = Platform.environment['USER'] ?? 'user';
-  return '/tmp/firewood-ipc-$user.sock';
+  if (Platform.isMacOS) {
+    final tmp = Platform.environment['TMPDIR'];
+    if (tmp != null && Directory(tmp).existsSync()) return tmp;
+  }
+  final home = Platform.environment['HOME'];
+  if (home == null || home.isEmpty) return null;
+  final dir = Directory('$home/.cache/firewood');
+  try {
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    final res = Process.runSync('chmod', ['700', dir.path]);
+    return res.exitCode == 0 ? dir.path : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+String? get defaultSocketPath {
+  final dir = ipcDir;
+  return dir == null ? null : '$dir/firewood-ipc.sock';
+}
+
+/// V-002: read the desktop app's per-session bridge token (0600 file beside
+/// the socket, inside the private IPC directory).
+String? readBridgeToken(String socketPath) {
+  try {
+    final f = File('$socketPath.token');
+    if (!f.existsSync()) return null;
+    final t = f.readAsStringSync().trim();
+    return t.isEmpty ? null : t;
+  } catch (_) {
+    return null;
+  }
 }
 
 String get defaultHostBinaryPath {
@@ -77,8 +110,11 @@ Future<void> _installManifests() async {
     'description': 'Firewood Password Manager Native Messaging Host',
     'path': binaryPath,
     'type': 'stdio',
+    // V-001: pinned to the Firewood extension ID only (derived from
+    // firewood-browser-extension/extension_key.pem). A wildcard here would
+    // let ANY installed extension query plaintext credentials.
     'allowed_origins': [
-      'chrome-extension://*/',
+      'chrome-extension://ifmolflcokffbmccpbkgeoakmgbpboep/',
     ],
   };
 
@@ -87,9 +123,9 @@ Future<void> _installManifests() async {
     'description': 'Firewood Password Manager Native Messaging Host',
     'path': binaryPath,
     'type': 'stdio',
+    // Matches browser_specific_settings.gecko.id in manifest.json (V-046).
     'allowed_extensions': [
-      'firewood-extension@firewood.security',
-      'firewood@firewood.net',
+      'firewood@firewood.security',
     ],
   };
 
@@ -144,6 +180,11 @@ Future<void> _uninstallManifests() async {
 
 Future<void> _checkStatus() async {
   final socketPath = defaultSocketPath;
+  if (socketPath == null) {
+    stdout.writeln(
+        'Socket Path: unavailable (no private runtime directory)');
+    return;
+  }
   stdout.writeln('Socket Path: $socketPath');
 
   try {
@@ -153,7 +194,10 @@ Future<void> _checkStatus() async {
       timeout: const Duration(seconds: 2),
     );
 
-    socket.write('{"action":"ping"}\n');
+    final ping = <String, dynamic>{'action': 'ping'};
+    final token = readBridgeToken(socketPath);
+    if (token != null) ping['auth'] = token;
+    socket.write('${jsonEncode(ping)}\n');
     await socket.flush();
 
     final responseCompleter = Completer<String>();
@@ -242,6 +286,26 @@ Future<void> _runNativeMessagingLoop() async {
 
 Future<String> _queryDesktopApp(String rawJson) async {
   final socketPath = defaultSocketPath;
+  if (socketPath == null) {
+    return jsonEncode({
+      'status': 'error',
+      'error': 'No private runtime directory available for IPC',
+    });
+  }
+
+  // V-002: attach the desktop app's per-session token before forwarding the
+  // browser's request. The app rejects any command presented without it.
+  var payload = rawJson;
+  final token = readBridgeToken(socketPath);
+  if (token != null) {
+    try {
+      final msg = jsonDecode(rawJson) as Map<String, dynamic>;
+      msg['auth'] = token;
+      payload = jsonEncode(msg);
+    } catch (_) {
+      // Malformed request — forwarded as-is; the app rejects it.
+    }
+  }
 
   try {
     final socket = await Socket.connect(
@@ -250,7 +314,7 @@ Future<String> _queryDesktopApp(String rawJson) async {
       timeout: const Duration(seconds: 2),
     );
 
-    socket.write('$rawJson\n');
+    socket.write('$payload\n');
     await socket.flush();
 
     final completer = Completer<String>();

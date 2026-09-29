@@ -1,26 +1,29 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hugeicons/hugeicons.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:cryptography/cryptography.dart';
 
 import 'package:firewood_core/firewood_core.dart';
 import 'package:firewood_design/firewood_design.dart';
+import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
 
 import '../providers.dart';
 import '../services/airshare_service.dart';
 import '../services/autotype_service.dart';
 import '../services/desktop_qr_decoder.dart';
 import '../services/secure_clipboard.dart';
+import 'animated_qr_display.dart';
 
-enum AirShareMode { spark, flameCode }
 enum AirShareRole { send, receive }
 
 /// Modal for Over-The-Air Credential Sharing:
-/// - Mode 1: Spark (QR Bootstrap + X25519 + ChaCha20-Poly1305)
-/// - Mode 2: Flame Code (Proximity BLE + 4-digit numeric SAS verification)
+/// Exclusively Local QR P2P (Bootstrap via QR + X25519 + ChaCha20-Poly1305 over Wi-Fi)
 class AirShareDialog extends ConsumerStatefulWidget {
   final DecryptedItem? initialItem;
   final AirShareRole initialRole;
@@ -51,7 +54,6 @@ class AirShareDialog extends ConsumerStatefulWidget {
 }
 
 class _AirShareDialogState extends ConsumerState<AirShareDialog> {
-  late AirShareMode _mode;
   late AirShareRole _role;
 
   // Selected item if sending
@@ -59,13 +61,18 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
   List<DecryptedItem> _availableItems = [];
   bool _loadingItems = false;
 
-  // Spark state
+  // QR state
   String? _sparkUri;
   final TextEditingController _sparkInputController = TextEditingController();
 
-  // Flame Code state
-  String? _flameCode;
-  bool _flameCodeConfirmed = false;
+  // Receiver network state
+  HttpServer? _receiverServer;
+
+  /// V-005: per-session token the sender must present (x-firewood-token).
+  String _sessionToken = '';
+
+  /// V-005: exactly one payload may ever be accepted per listener session.
+  bool _transferAccepted = false;
 
   // Transfer state
   bool _isProcessing = false;
@@ -76,7 +83,6 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
   @override
   void initState() {
     super.initState();
-    _mode = AirShareMode.spark;
     _role = widget.initialRole;
     _selectedItem = widget.initialItem;
 
@@ -84,15 +90,43 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
 
     if (_role == AirShareRole.receive) {
       _initReceiver();
-    } else if (_role == AirShareRole.send && _mode == AirShareMode.flameCode) {
-      _initFlameCodeSender();
     }
   }
 
   @override
   void dispose() {
     _sparkInputController.dispose();
+    _stopReceiverServer();
     super.dispose();
+  }
+
+  Future<void> _stopReceiverServer() async {
+    try {
+      await _receiverServer?.close(force: true);
+    } catch (_) {}
+    _receiverServer = null;
+  }
+
+  Future<String> _getLocalIpAddress() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback && addr.address.startsWith('192.168.')) {
+            return addr.address;
+          }
+        }
+      }
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback) return addr.address;
+        }
+      }
+    } catch (_) {}
+    return '127.0.0.1';
   }
 
   Future<void> _loadVaultItems() async {
@@ -106,7 +140,7 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
         _availableItems = items;
         _loadingItems = false;
         if (_selectedItem == null && items.isNotEmpty) {
-          _selectedItem = items.first;
+          _selectedItem = widget.initialItem ?? items.first;
         }
       });
     } catch (_) {
@@ -115,38 +149,35 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
   }
 
   void _switchRole(AirShareRole role) {
+    if (_role == role) return;
     setState(() {
       _role = role;
       _statusMessage = '';
       _receivedPayload = null;
-      _flameCodeConfirmed = false;
     });
+
     if (role == AirShareRole.receive) {
       _initReceiver();
-    } else if (_mode == AirShareMode.flameCode) {
-      _initFlameCodeSender();
+    } else {
+      _stopReceiverServer();
     }
   }
 
-  void _switchMode(AirShareMode mode) {
-    setState(() {
-      _mode = mode;
-      _statusMessage = '';
-      _receivedPayload = null;
-      _flameCodeConfirmed = false;
-    });
-    if (_role == AirShareRole.receive) {
-      _initReceiver();
-    } else if (mode == AirShareMode.flameCode) {
-      _initFlameCodeSender();
+  /// Constant-time comparison of the presented transfer token (V-005).
+  static bool _tokensMatch(String a, String b) {
+    if (a.isEmpty || a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < b.length; i++) {
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
     }
+    return diff == 0;
   }
 
   Future<void> _initReceiver() async {
     final airShare = ref.read(airShareServiceProvider);
     setState(() {
       _isProcessing = true;
-      _statusMessage = 'Initializing secure receiver session…';
+      _statusMessage = 'Starting local P2P listener…';
     });
 
     try {
@@ -154,79 +185,155 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
       final pk = await keyPair.extractPublicKey();
       final nonce = airShare.generateNonce(12);
 
-      if (_mode == AirShareMode.spark) {
-        final uri = airShare.createSparkUri(
-          publicKey: pk,
-          nonce: nonce,
-          deviceName: 'Firewood Desktop',
-        );
-        if (!mounted) return;
-        setState(() {
-          _sparkUri = uri;
-          _isProcessing = false;
-          _statusMessage = 'Listening for incoming Spark connection…';
-        });
-      } else {
-        // Flame Code mode: discover peer handshake to derive 4-digit code
-        final senderKp = await airShare.generateKeyPair();
-        final senderPk = await senderKp.extractPublicKey();
-        final secret = await airShare.computeSharedSecret(
-          localKeyPair: keyPair,
-          remotePublicKey: senderPk,
-        );
-        final code = await airShare.deriveFlameCode(
-          sharedSecret: secret,
-          salt: nonce,
-        );
-        if (!mounted) return;
-        setState(() {
-          _flameCode = code;
-          _isProcessing = false;
-          _statusMessage = 'Peer discovered. Verify 4-digit Flame Code.';
-        });
-      }
+      // V-005: mint a fresh 32-byte session token for this receiver session.
+      // It travels only inside the scanned QR (firewood://spark?tkn=…), so a
+      // passive LAN sniffer who only sees the POST cannot replay it.
+      final rng = Random.secure();
+      _sessionToken =
+          base64UrlEncode(List<int>.generate(32, (_) => rng.nextInt(256)));
+      _transferAccepted = false;
+
+      await _stopReceiverServer();
+      // V-022: bind ONLY the address that will be advertised in the QR —
+      // never the wildcard, which would expose every NIC (cellular/VPN
+      // included). With no LAN the helper returns 127.0.0.1: that loopback
+      // listener is unreachable across devices and parseSparkUri filters
+      // loopback addresses, so the sender gets an honest "no reachable
+      // address" instead of a listener on every interface.
+      final localIp = await _getLocalIpAddress();
+      _receiverServer = await HttpServer.bind(InternetAddress(localIp), 0);
+      final port = _receiverServer!.port;
+
+      _receiverServer!.listen((HttpRequest request) async {
+        if (request.method == 'POST') {
+          // V-022: exactly one documented endpoint exists. Other POST
+          // paths get a generic 404 before any parsing or auth feedback.
+          if (request.uri.path != '/airshare/transfer') {
+            request.response
+              ..statusCode = HttpStatus.notFound
+              ..close();
+            return;
+          }
+          // V-005: authenticate the sender — constant-time token compare.
+          final provided = request.headers.value('x-firewood-token') ?? '';
+          if (!_tokensMatch(provided, _sessionToken)) {
+            request.response
+              ..statusCode = HttpStatus.unauthorized
+              ..write('unauthorized')
+              ..close();
+            return;
+          }
+
+          // V-005: single-shot — first accepted payload wins; everything
+          // after it is refused so a second device cannot overwrite or
+          // race the accepted credential.
+          if (_transferAccepted) {
+            request.response
+              ..statusCode = HttpStatus.conflict
+              ..write('transfer already completed')
+              ..close();
+            return;
+          }
+          _transferAccepted = true;
+
+          try {
+            // V-022: 64 KB cap, counted while streaming — neither a lying
+            // content-length nor chunked encoding can exhaust memory
+            // (credentials payloads are a few hundred bytes).
+            const maxBodyBytes = 64 * 1024;
+            if (request.contentLength > maxBodyBytes) {
+              throw const _OversizedBody();
+            }
+            final builder = <int>[];
+            var received = 0;
+            await for (final chunk in request) {
+              received += chunk.length;
+              if (received > maxBodyBytes) {
+                throw const _OversizedBody();
+              }
+              builder.addAll(chunk);
+            }
+            final content = utf8.decode(builder);
+            final data = jsonDecode(content) as Map<String, dynamic>;
+            final senderPkBase64 = data['senderPk'] as String;
+            final cipherTextBase64 = data['ciphertext'] as String;
+
+            final senderPk = SimplePublicKey(
+              base64Url.decode(senderPkBase64),
+              type: KeyPairType.x25519,
+            );
+            final encryptedBytes = base64Decode(cipherTextBase64);
+
+            final secret = await airShare.computeSharedSecret(
+              localKeyPair: keyPair,
+              remotePublicKey: senderPk,
+            );
+            final sessionKey = await airShare.deriveSessionKey(
+              sharedSecret: secret,
+              salt: nonce,
+            );
+
+            final payload = await airShare.decryptPayload(
+              encryptedBytes: encryptedBytes,
+              sessionKey: sessionKey,
+            );
+
+            request.response
+              ..statusCode = HttpStatus.ok
+              ..headers.contentType = ContentType.json
+              ..write(jsonEncode({'status': 'ok'}))
+              ..close();
+
+            if (!mounted) return;
+            setState(() {
+              _receivedPayload = payload;
+              _statusMessage =
+                  'Credential "${payload.title}" received and decrypted in RAM!';
+            });
+          } on _OversizedBody {
+            // Over-limit bodies never consume the single-shot slot.
+            _transferAccepted = false;
+            request.response
+              ..statusCode = HttpStatus.requestEntityTooLarge
+              ..write('payload too large')
+              ..close();
+          } catch (e) {
+            // Failed attempt does not consume the single-shot slot.
+            _transferAccepted = false;
+            // V-042: never echo exception internals to the network peer.
+            debugPrint('AirShare receive failed: $e');
+            request.response
+              ..statusCode = HttpStatus.badRequest
+              ..write('bad request')
+              ..close();
+          }
+        } else {
+          request.response
+            ..statusCode = HttpStatus.methodNotAllowed
+            ..close();
+        }
+      });
+
+      final uri = airShare.createSparkUri(
+        publicKey: pk,
+        nonce: nonce,
+        deviceName: 'Firewood Desktop',
+        host: localIp,
+        port: port,
+        token: _sessionToken,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _sparkUri = uri;
+        _isProcessing = false;
+        _statusMessage = 'Listening on $localIp:$port';
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isProcessing = false;
-        _statusMessage = 'Failed to initialize: $e';
-      });
-    }
-  }
-
-  Future<void> _initFlameCodeSender() async {
-    final airShare = ref.read(airShareServiceProvider);
-    setState(() {
-      _isProcessing = true;
-      _statusMessage = 'Scanning for nearby Firewood peer…';
-    });
-
-    try {
-      final senderKp = await airShare.generateKeyPair();
-      final receiverKp = await airShare.generateKeyPair();
-      final receiverPk = await receiverKp.extractPublicKey();
-
-      final nonce = airShare.generateNonce(12);
-      final secret = await airShare.computeSharedSecret(
-        localKeyPair: senderKp,
-        remotePublicKey: receiverPk,
-      );
-      final code = await airShare.deriveFlameCode(
-        sharedSecret: secret,
-        salt: nonce,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _flameCode = code;
-        _isProcessing = false;
-        _statusMessage = 'Peer connected. Verify 4-digit Flame Code.';
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isProcessing = false;
-        _statusMessage = 'Discovery error: $e';
+        _statusMessage = 'Failed to initialize receiver: $e';
       });
     }
   }
@@ -248,7 +355,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 backgroundColor: AppColors.mintAccent,
-                content: Text('Spark QR code captured from image file! Ready to transmit.'),
+                content: Text(
+                    'QR code captured from image file! Ready to transmit.'),
               ),
             );
           }
@@ -257,7 +365,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 backgroundColor: AppColors.roseAccent,
-                content: Text('No QR code could be detected in the chosen image.'),
+                content:
+                    Text('No QR code could be detected in the chosen image.'),
               ),
             );
           }
@@ -275,57 +384,6 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
     }
   }
 
-  Future<void> _scanWithCamera() async {
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1B1F2A),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Color(0xFF2C3242)),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.camera_alt, color: AppColors.orangeAccent, size: 20),
-            SizedBox(width: 10),
-            Text('Scan Spark QR Code', style: TextStyle(color: Colors.white, fontSize: 16)),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Select an option to scan the receiver\'s Spark QR token:',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            SizedBox(height: 12),
-            Text(
-              '• Select Image / Screenshot file (instant pure-Dart QR decoder)\n• Paste token from system clipboard',
-              style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.4),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.orangeAccent),
-            icon: const Icon(Icons.file_upload, size: 16, color: Colors.black),
-            label: const Text('Choose QR Image File', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            onPressed: () => Navigator.of(ctx).pop('file'),
-          ),
-        ],
-      ),
-    );
-
-    if (choice == 'file') {
-      await _scanQrImageFile();
-    }
-  }
-
   Future<void> _sendViaSpark() async {
     final item = _selectedItem;
     if (item == null) {
@@ -338,7 +396,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
     final rawUri = _sparkInputController.text.trim();
     if (rawUri.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please scan or paste receiver\'s Spark URI.')),
+        const SnackBar(
+            content: Text('Please scan or paste the receiver QR URI.')),
       );
       return;
     }
@@ -346,12 +405,13 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
     final airShare = ref.read(airShareServiceProvider);
     setState(() {
       _isProcessing = true;
-      _statusMessage = 'Parsing receiver Spark parameters…';
+      _statusMessage = 'Parsing receiver QR parameters…';
     });
 
     try {
       final parsed = airShare.parseSparkUri(rawUri);
-      setState(() => _statusMessage = 'Performing X25519 key exchange with ${parsed.deviceName}…');
+      setState(() => _statusMessage =
+          'Performing X25519 key exchange with ${parsed.deviceName}…');
 
       final senderKp = await airShare.generateKeyPair();
       final secret = await airShare.computeSharedSecret(
@@ -363,7 +423,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
         salt: parsed.nonce,
       );
 
-      setState(() => _statusMessage = 'Encrypting credential with ChaCha20-Poly1305…');
+      setState(() =>
+          _statusMessage = 'Encrypting credential with ChaCha20-Poly1305…');
       final payload = AirSharePayload(
         kind: AirShareKind.credential,
         title: item.title,
@@ -376,19 +437,47 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
         sessionKey: sessionKey,
       );
 
-      setState(() => _statusMessage = 'Transmitting ${encrypted.length} bytes over BLE…');
-      await Future.delayed(const Duration(milliseconds: 600));
+      final senderPk = await senderKp.extractPublicKey();
+      final senderPkBase64 = base64UrlEncode(senderPk.bytes);
+      final cipherTextBase64 = base64Encode(encrypted);
+
+      if (parsed.host != null && parsed.port != null) {
+        setState(() => _statusMessage =
+            'Connecting to ${parsed.host}:${parsed.port} over local network…');
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 6);
+        final request =
+            await client.post(parsed.host!, parsed.port!, '/airshare/transfer');
+        request.headers.contentType = ContentType.json;
+        // V-005: present the receiver's per-session token from the QR.
+        request.headers.set('x-firewood-token', parsed.token ?? '');
+        request.write(jsonEncode({
+          'senderPk': senderPkBase64,
+          'ciphertext': cipherTextBase64,
+        }));
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw HttpException(
+              'Receiver rejected payload: HTTP ${response.statusCode}');
+        }
+      } else {
+        setState(
+            () => _statusMessage = 'Transmitting ${encrypted.length} bytes…');
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
 
       if (!mounted) return;
       setState(() {
         _isProcessing = false;
-        _statusMessage = 'Credential securely transmitted via Spark!';
+        _statusMessage =
+            'Credential securely transmitted to ${parsed.deviceName}!';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: AppColors.mintAccent,
-          content: Text('Successfully shared "${item.title}" to ${parsed.deviceName}!'),
+          content: Text(
+              'Successfully shared "${item.title}" to ${parsed.deviceName}!'),
         ),
       );
     } catch (e) {
@@ -398,106 +487,6 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
         _statusMessage = 'Transfer failed: $e';
       });
     }
-  }
-
-  Future<void> _sendViaFlameCode() async {
-    final item = _selectedItem;
-    if (item == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an item to share.')),
-      );
-      return;
-    }
-
-    if (!_flameCodeConfirmed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please confirm the 4-digit Flame Code first.')),
-      );
-      return;
-    }
-
-    final airShare = ref.read(airShareServiceProvider);
-    setState(() {
-      _isProcessing = true;
-      _statusMessage = 'Encrypting and streaming credential…';
-    });
-
-    try {
-      final senderKp = await airShare.generateKeyPair();
-      final receiverKp = await airShare.generateKeyPair();
-      final receiverPk = await receiverKp.extractPublicKey();
-      final nonce = airShare.generateNonce(12);
-
-      final secret = await airShare.computeSharedSecret(
-        localKeyPair: senderKp,
-        remotePublicKey: receiverPk,
-      );
-      final sessionKey = await airShare.deriveSessionKey(
-        sharedSecret: secret,
-        salt: nonce,
-      );
-
-      final payload = AirSharePayload(
-        kind: AirShareKind.credential,
-        title: item.title,
-        data: Map<String, dynamic>.from(item.fields)..['type'] = item.type,
-        rawBytes: [],
-      );
-
-      final encrypted = await airShare.encryptPayload(
-        payload: payload,
-        sessionKey: sessionKey,
-      );
-
-      setState(() => _statusMessage = 'Streaming ${encrypted.length} encrypted bytes via Flame BLE…');
-      await Future.delayed(const Duration(milliseconds: 600));
-
-      if (!mounted) return;
-      setState(() {
-        _isProcessing = false;
-        _statusMessage = 'Payload delivered and confirmed by peer!';
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: AppColors.mintAccent,
-          content: Text('Credential "${item.title}" securely shared!'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isProcessing = false;
-        _statusMessage = 'Flame transfer error: $e';
-      });
-    }
-  }
-
-  Future<void> _simulateReceive() async {
-    setState(() {
-      _isProcessing = true;
-      _statusMessage = 'Receiving stream & decrypting in RAM…';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 700));
-
-    if (!mounted) return;
-    setState(() {
-      _isProcessing = false;
-      _statusMessage = 'Decrypted in volatile memory!';
-      _receivedPayload = AirSharePayload(
-        kind: AirShareKind.credential,
-        title: 'Work AWS Console',
-        data: {
-          'type': 'login',
-          'username': 'dev-lead@company.internal',
-          'password': 'Firewood#Secure992\$',
-          'url': 'https://signin.aws.amazon.com',
-          'vault': 'Primary Vault',
-        },
-        rawBytes: [],
-      );
-    });
   }
 
   Future<void> _saveReceivedItem() async {
@@ -516,9 +505,106 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
     }
 
     try {
-      final title = payload.title;
+      final title = payload.title.trim();
       final type = payload.data['type']?.toString() ?? 'login';
       final fields = Map<String, dynamic>.from(payload.data)..remove('type');
+
+      final allItems = await ref.read(itemServiceProvider).getAllItems(key);
+      DecryptedItem? conflict;
+      for (final it in allItems) {
+        if (it.title.trim().toLowerCase() == title.toLowerCase()) {
+          conflict = it;
+          break;
+        }
+      }
+
+      if (conflict != null && mounted) {
+        final resolution = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.surfaceZinc,
+            title: const Row(
+              children: [
+                HugeIcon(
+                  icon: HugeIcons.strokeRoundedAlertCircle,
+                  color: AppColors.orangeAccent,
+                  size: 20,
+                  strokeWidth: 2,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Credential Conflict',
+                  style: TextStyle(color: AppColors.offWhite, fontSize: 16),
+                ),
+              ],
+            ),
+            content: Text(
+              'An item named "$title" already exists in your vault.\n\nOverride existing, save as copy, or cancel?',
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: const Text('Cancel',
+                    style: TextStyle(color: AppColors.textMuted)),
+              ),
+              FirewoodButton(
+                label: 'Save as Copy',
+                variant: FirewoodButtonVariant.secondary,
+                height: 36,
+                onPressed: () => Navigator.pop(ctx, 'copy'),
+              ),
+              FirewoodButton(
+                label: 'Override',
+                variant: FirewoodButtonVariant.primary,
+                height: 36,
+                onPressed: () => Navigator.pop(ctx, 'override'),
+              ),
+            ],
+          ),
+        );
+
+        if (resolution == null || resolution == 'cancel' || !mounted) {
+          return;
+        }
+
+        if (resolution == 'override') {
+          await ref.read(itemServiceProvider).updateItem(
+                key: key,
+                itemId: conflict.itemId,
+                newFields: fields,
+                newTitle: title,
+              );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.mintAccent,
+              content: Text('Overrode existing "$title" with received data.'),
+            ),
+          );
+          Navigator.of(context).pop();
+          return;
+        } else if (resolution == 'copy') {
+          final copyTitle = '$title (Shared)';
+          await ref.read(itemServiceProvider).addItem(
+                key: key,
+                type: type,
+                title: copyTitle,
+                fields: fields,
+              );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.mintAccent,
+              content: Text('Saved as "$copyTitle" directly into your vault.'),
+            ),
+          );
+          Navigator.of(context).pop();
+          return;
+        }
+      }
 
       await ref.read(itemServiceProvider).addItem(
             key: key,
@@ -564,7 +650,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: const Color(0xFF1B1E28),
-        content: Text('Auto-typing in ${delay}s. Switch to target application.'),
+        content:
+            Text('Auto-typing in ${delay}s. Switch to target application.'),
       ),
     );
 
@@ -586,7 +673,7 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 580, maxHeight: 720),
+        constraints: const BoxConstraints(maxWidth: 540, maxHeight: 680),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -598,28 +685,23 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             // Content Area
             Flexible(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(22),
                 child: _receivedPayload != null
                     ? _buildReceivedPayloadView()
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Mode Selector
-                          _buildModeSelector(),
-                          const SizedBox(height: 18),
-
-                          // Role Selector (Send vs Receive)
+                          // Role Switcher: Send vs Receive
                           _buildRoleSelector(),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: 20),
 
-                          // Mode specific content
-                          if (_mode == AirShareMode.spark)
-                            _buildSparkContent()
+                          if (_role == AirShareRole.send)
+                            _buildSendContent()
                           else
-                            _buildFlameCodeContent(),
+                            _buildReceiveContent(),
 
                           if (_statusMessage.isNotEmpty) ...[
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 16),
                             _buildStatusBanner(),
                           ],
                         ],
@@ -637,7 +719,7 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
       child: Row(
         children: [
           Container(
@@ -650,70 +732,63 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
               ),
             ),
             child: const HugeIcon(
-              icon: HugeIcons.strokeRoundedShare08,
+              icon: HugeIcons.strokeRoundedQrCode,
               size: 20,
               color: AppColors.orangeAccent,
               strokeWidth: 2,
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Firewood AirShare',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+                Row(
+                  children: [
+                    const Text(
+                      'AirShare',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.orangeAccent.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: AppColors.orangeAccent.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: const Text(
+                        'Local QR P2P',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.orangeAccent,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 2),
-                Text(
-                  'Over-The-Air Bluetooth + Ephemeral Asymmetric Encryption',
+                const SizedBox(height: 2),
+                const Text(
+                  'End-to-end encrypted transfer over local Wi-Fi (X25519 + ChaCha20-Poly1305)',
                   style: TextStyle(fontSize: 11, color: Colors.white54),
                 ),
               ],
             ),
           ),
           IconButton(
+            tooltip: 'Close',
             icon: const Icon(Icons.close, color: Colors.white54, size: 20),
             onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeSelector() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF181C26),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF2A3142)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ModeTabButton(
-              title: 'Spark Mode',
-              subtitle: 'QR Handshake + BLE',
-              icon: HugeIcons.strokeRoundedQrCode,
-              isSelected: _mode == AirShareMode.spark,
-              onTap: () => _switchMode(AirShareMode.spark),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _ModeTabButton(
-              title: 'Flame Code',
-              subtitle: '4-Digit BLE SAS',
-              icon: HugeIcons.strokeRoundedBluetooth,
-              isSelected: _mode == AirShareMode.flameCode,
-              onTap: () => _switchMode(AirShareMode.flameCode),
-            ),
           ),
         ],
       ),
@@ -734,10 +809,13 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: () => _switchRole(AirShareRole.send),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 9),
                 decoration: BoxDecoration(
-                  color: _role == AirShareRole.send ? AppColors.orangeAccent : Colors.transparent,
+                  color: _role == AirShareRole.send
+                      ? AppColors.orangeAccent
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -746,16 +824,20 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
                     HugeIcon(
                       icon: HugeIcons.strokeRoundedUpload04,
                       size: 14,
-                      color: _role == AirShareRole.send ? Colors.black : Colors.white70,
+                      color: _role == AirShareRole.send
+                          ? Colors.black
+                          : Colors.white70,
                       strokeWidth: 2,
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Text(
                       'Send',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: _role == AirShareRole.send ? Colors.black : Colors.white70,
+                        color: _role == AirShareRole.send
+                            ? Colors.black
+                            : Colors.white70,
                       ),
                     ),
                   ],
@@ -763,15 +845,18 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: () => _switchRole(AirShareRole.receive),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 9),
                 decoration: BoxDecoration(
-                  color: _role == AirShareRole.receive ? AppColors.orangeAccent : Colors.transparent,
+                  color: _role == AirShareRole.receive
+                      ? AppColors.orangeAccent
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -780,16 +865,20 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
                     HugeIcon(
                       icon: HugeIcons.strokeRoundedDownload04,
                       size: 14,
-                      color: _role == AirShareRole.receive ? Colors.black : Colors.white70,
+                      color: _role == AirShareRole.receive
+                          ? Colors.black
+                          : Colors.white70,
                       strokeWidth: 2,
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Text(
                       'Receive',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: _role == AirShareRole.receive ? Colors.black : Colors.white70,
+                        color: _role == AirShareRole.receive
+                            ? Colors.black
+                            : Colors.white70,
                       ),
                     ),
                   ],
@@ -802,262 +891,198 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
     );
   }
 
-  Widget _buildSparkContent() {
-    if (_role == AirShareRole.receive) {
-      return Column(
-        children: [
-          const Text(
-            'Scan Spark QR with Sender device',
-            style: TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.bold),
+  /// Short user-facing receive state for the pill under the QR.
+  /// The verbose "Listening on …" detail stays only in the bottom
+  /// status banner, so it is deliberately never shown here.
+  String _receivePillStatus() {
+    final msg = _statusMessage;
+    if (msg.contains('received and decrypted')) return msg;
+    if (msg.contains('Failed to initialize receiver')) {
+      return 'Receiver error — see details below';
+    }
+    if (msg.contains('Starting local P2P')) {
+      return 'Starting…';
+    }
+    return 'Ready to receive';
+  }
+
+  Widget _buildReceiveContent() {
+    return Column(
+      children: [
+        const Text(
+          'Display this QR code to the sender device',
+          style: TextStyle(
+              fontSize: 13, color: Colors.white70, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Target device must be on the same local network to transmit.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 11, color: Colors.white38),
+        ),
+        const SizedBox(height: 16),
+
+        if (_sparkUri != null)
+          DesktopAnimatedQrDisplay(
+            qrData: _sparkUri!,
+            size: 190,
+          )
+        else
+          const SizedBox(
+            height: 190,
+            child: Center(
+                child:
+                    CircularProgressIndicator(color: AppColors.orangeAccent)),
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'Includes ephemeral X25519 public key and single-use session nonce.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Colors.white38),
+        const SizedBox(height: 14),
+
+        // Live status pill (short receive status only — the verbose
+        // "Listening on …" detail lives in the bottom status banner).
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF171A24),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFF2B3244)),
           ),
-          const SizedBox(height: 16),
-          if (_sparkUri != null)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: QrImageView(
-                data: _sparkUri!,
-                version: QrVersions.auto,
-                size: 180,
-                backgroundColor: Colors.white,
-              ),
-            )
-          else
-            const SizedBox(
-              height: 180,
-              child: Center(child: CircularProgressIndicator(color: AppColors.orangeAccent)),
-            ),
-          const SizedBox(height: 14),
-          if (_sparkUri != null)
-            OutlinedButton.icon(
-              icon: const HugeIcon(
-                icon: HugeIcons.strokeRoundedCopy01,
-                size: 14,
-                color: Colors.white70,
-                strokeWidth: 1.8,
-              ),
-              label: const Text('Copy Spark URI', style: TextStyle(color: Colors.white70, fontSize: 11)),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _sparkUri!));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Spark URI copied to clipboard.')),
-                );
-              },
-            ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: _simulateReceive,
-            child: const Text('Simulate Incoming Transfer', style: TextStyle(color: Colors.white38, fontSize: 11)),
-          ),
-        ],
-      );
-    } else {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildItemPicker(),
-          const SizedBox(height: 16),
-          const Text(
-            'Scan Receiver Spark QR',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
-          ),
-          const SizedBox(height: 8),
-          Row(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.orangeAccent,
-                    side: const BorderSide(color: Color(0xFF2C3242)),
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                  label: const Text('Scan with Camera', style: TextStyle(fontSize: 12)),
-                  onPressed: _scanWithCamera,
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppColors.mintAccent,
+                  shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Color(0xFF2C3242)),
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  icon: const Icon(Icons.image_outlined, size: 16),
-                  label: const Text('Scan QR Image', style: TextStyle(fontSize: 12)),
-                  onPressed: _scanQrImageFile,
+              Flexible(
+                child: Text(
+                  _receivePillStatus(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'monospace'),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          const Row(
-            children: [
-              Expanded(child: Divider(color: Color(0xFF242A38))),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10),
-                child: Text('OR PASTE SPARK URI', style: TextStyle(color: Colors.white30, fontSize: 10, letterSpacing: 0.8)),
-              ),
-              Expanded(child: Divider(color: Color(0xFF242A38))),
-            ],
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _sparkInputController,
-            style: const TextStyle(fontSize: 12, color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'firewood://spark?pk=...&nonce=...',
-              hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
-              filled: true,
-              fillColor: const Color(0xFF161922),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF2C3242)),
-              ),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.qr_code_scanner, color: AppColors.orangeAccent, size: 16),
-                    tooltip: 'Scan Image / Screenshot',
-                    onPressed: _scanQrImageFile,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.paste, color: Colors.white54, size: 16),
-                    tooltip: 'Paste from Clipboard',
-                    onPressed: () async {
-                      final data = await Clipboard.getData('text/plain');
-                      if (data?.text != null) {
-                        setState(() => _sparkInputController.text = data!.text!);
-                      }
-                    },
-                  ),
-                ],
-              ),
+        ),
+        const SizedBox(height: 8),
+
+        if (_sparkUri != null)
+          TextButton.icon(
+            icon: const HugeIcon(
+              icon: HugeIcons.strokeRoundedCopy01,
+              size: 13,
+              color: Colors.white38,
+              strokeWidth: 1.8,
             ),
+            label: const Text('Copy QR URI',
+                style: TextStyle(color: Colors.white38, fontSize: 11)),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: _sparkUri!));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  duration: Duration(seconds: 2),
+                  content: Text('AirShare URI copied to clipboard.'),
+                ),
+              );
+            },
           ),
-        ],
-      );
-    }
+      ],
+    );
   }
 
-  Widget _buildFlameCodeContent() {
-    final code = _flameCode ?? '----';
-    final digits = code.padRight(4, '-').split('');
-
+  Widget _buildSendContent() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          _role == AirShareRole.send ? 'Verify 4-Digit Flame Code' : 'Incoming Connection Flame Code',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          _role == AirShareRole.send
-              ? 'Ensure this exact 4-digit code matches the receiver\'s screen before streaming.'
-              : 'Confirm this 4-digit code matches the sender device to authorize decryption.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 11, color: Colors.white54),
-        ),
-        const SizedBox(height: 20),
+        // 1. Select Credential
+        _buildItemPicker(),
+        const SizedBox(height: 16),
 
-        // 4-Digit Display Boxes
+        // 2. Select Receiver QR
+        const Text(
+          'Provide Receiver QR Code',
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
+        ),
+        const SizedBox(height: 8),
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: digits.map((digit) {
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 6),
-              width: 52,
-              height: 62,
-              decoration: BoxDecoration(
-                color: const Color(0xFF181C26),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _flameCodeConfirmed
-                      ? AppColors.mintAccent
-                      : AppColors.orangeAccent.withValues(alpha: 0.6),
-                  width: 1.8,
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.orangeAccent,
+                  side: const BorderSide(color: Color(0xFF2C3242)),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.orangeAccent.withValues(alpha: 0.12),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
+                icon: const Icon(Icons.image_outlined, size: 16),
+                label: const Text('Scan QR Image / Screenshot',
+                    style: TextStyle(fontSize: 12)),
+                onPressed: _scanQrImageFile,
               ),
-              child: Center(
-                child: Text(
-                  digit,
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: _flameCodeConfirmed ? AppColors.mintAccent : Colors.white,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 20),
-
-        if (_role == AirShareRole.send) ...[
-          _buildItemPicker(),
-          const SizedBox(height: 16),
-          CheckboxListTile(
-            title: const Text(
-              'I confirm the 4-digit Flame Code matches the receiver.',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
-            value: _flameCodeConfirmed,
-            activeColor: AppColors.orangeAccent,
-            checkColor: Colors.black,
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            onChanged: (val) => setState(() => _flameCodeConfirmed = val ?? false),
-          ),
-        ] else ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Reject', style: TextStyle(color: AppColors.roseAccent)),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white70,
+                side: const BorderSide(color: Color(0xFF2C3242)),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 11, horizontal: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.check, color: Colors.black, size: 16),
-                label: const Text('Accept & Decrypt', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.mintAccent),
-                onPressed: _simulateReceive,
-              ),
-            ],
+              icon: const Icon(Icons.paste, size: 14),
+              label: const Text('Paste', style: TextStyle(fontSize: 12)),
+              onPressed: () async {
+                final data = await Clipboard.getData('text/plain');
+                if (data?.text != null) {
+                  setState(() => _sparkInputController.text = data!.text!);
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        TextField(
+          controller: _sparkInputController,
+          style: const TextStyle(fontSize: 12, color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'firewood://spark?pk=...&host=...&port=...',
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
+            filled: true,
+            fillColor: const Color(0xFF161922),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF2C3242)),
+            ),
           ),
-        ],
+          onChanged: (_) => setState(() {}),
+        ),
       ],
     );
   }
 
   Widget _buildItemPicker() {
     if (_loadingItems) {
-      return const Center(child: LinearProgressIndicator(color: AppColors.orangeAccent));
+      return const Center(
+          child: LinearProgressIndicator(color: AppColors.orangeAccent));
     }
 
     if (_availableItems.isEmpty) {
-      return const Text('No vault items available to share.', style: TextStyle(color: Colors.white54, fontSize: 12));
+      return const Text('No vault items available to share.',
+          style: TextStyle(color: Colors.white54, fontSize: 12));
     }
 
     final selected = _selectedItem ?? _availableItems.first;
@@ -1065,8 +1090,9 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Select Credential to Share',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
+          'Credential to Share',
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
         ),
         const SizedBox(height: 8),
         Container(
@@ -1095,13 +1121,15 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
                       Expanded(
                         child: Text(
                           it.title,
-                          style: const TextStyle(fontSize: 13, color: Colors.white),
+                          style: const TextStyle(
+                              fontSize: 13, color: Colors.white),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       Text(
                         it.type.toUpperCase(),
-                        style: const TextStyle(fontSize: 10, color: Colors.white38),
+                        style: const TextStyle(
+                            fontSize: 10, color: Colors.white38),
                       ),
                     ],
                   ),
@@ -1110,7 +1138,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
               onChanged: (id) {
                 if (id != null) {
                   setState(() {
-                    _selectedItem = _availableItems.firstWhere((it) => it.itemId == id);
+                    _selectedItem =
+                        _availableItems.firstWhere((it) => it.itemId == id);
                   });
                 }
               },
@@ -1135,10 +1164,12 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             const SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.orangeAccent),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.orangeAccent),
             )
           else
-            const Icon(Icons.info_outline, size: 16, color: AppColors.orangeAccent),
+            const Icon(Icons.info_outline,
+                size: 16, color: AppColors.orangeAccent),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -1153,7 +1184,9 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
 
   Widget _buildReceivedPayloadView() {
     final payload = _receivedPayload!;
-    final username = payload.data['username']?.toString() ?? payload.data['email']?.toString() ?? '';
+    final username = payload.data['username']?.toString() ??
+        payload.data['email']?.toString() ??
+        '';
     final password = payload.data['password']?.toString() ?? '';
     final url = payload.data['url']?.toString() ?? '';
 
@@ -1165,7 +1198,8 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
           decoration: BoxDecoration(
             color: AppColors.mintAccent.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.mintAccent.withValues(alpha: 0.3)),
+            border:
+                Border.all(color: AppColors.mintAccent.withValues(alpha: 0.3)),
           ),
           child: const Row(
             children: [
@@ -1174,7 +1208,10 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
               Expanded(
                 child: Text(
                   'Payload successfully received & decrypted in volatile memory!',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
                 ),
               ),
             ],
@@ -1195,42 +1232,62 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             children: [
               Text(
                 payload.title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
               if (url.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text(url, style: const TextStyle(fontSize: 12, color: Colors.white38)),
+                Text(url,
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.white38)),
               ],
               const Divider(color: Color(0xFF282F40), height: 24),
               if (username.isNotEmpty) ...[
-                const Text('Username / Email', style: TextStyle(fontSize: 10, color: Colors.white38)),
+                const Text('Username / Email',
+                    style: TextStyle(fontSize: 10, color: Colors.white38)),
                 const SizedBox(height: 2),
                 SelectableText(
                   username,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white),
                 ),
                 const SizedBox(height: 12),
               ],
               if (password.isNotEmpty) ...[
-                const Text('Password', style: TextStyle(fontSize: 10, color: Colors.white38)),
+                const Text('Password',
+                    style: TextStyle(fontSize: 10, color: Colors.white38)),
                 const SizedBox(height: 2),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         _passwordRevealed ? password : '••••••••••••••••',
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 14, color: Colors.white),
+                        style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                            color: Colors.white),
                       ),
                     ),
                     IconButton(
+                      tooltip: _passwordRevealed
+                          ? 'Hide password'
+                          : 'Reveal password',
                       icon: Icon(
-                        _passwordRevealed ? Icons.visibility_off : Icons.visibility,
+                        _passwordRevealed
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                         size: 16,
                         color: Colors.white54,
                       ),
-                      onPressed: () => setState(() => _passwordRevealed = !_passwordRevealed),
+                      onPressed: () => setState(
+                          () => _passwordRevealed = !_passwordRevealed),
                     ),
                     IconButton(
+                      tooltip: 'Copy password',
                       icon: const HugeIcon(
                         icon: HugeIcons.strokeRoundedCopy01,
                         size: 16,
@@ -1259,8 +1316,11 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
             Expanded(
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.download, size: 16, color: Colors.black),
-                label: const Text('Save to Vault', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.mintAccent),
+                label: const Text('Save to Vault',
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.mintAccent),
                 onPressed: _saveReceivedItem,
               ),
             ),
@@ -1273,8 +1333,11 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
                   color: Colors.black,
                   strokeWidth: 1.8,
                 ),
-                label: const Text('Auto-Type', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.orangeAccent),
+                label: const Text('Auto-Type',
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.orangeAccent),
                 onPressed: _autoTypeReceivedItem,
               ),
             ),
@@ -1293,11 +1356,13 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
           children: [
             TextButton(
               onPressed: () => setState(() => _receivedPayload = null),
-              child: const Text('Receive Another', style: TextStyle(color: Colors.white54)),
+              child: const Text('Receive Another',
+                  style: TextStyle(color: Colors.white54)),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Done', style: TextStyle(color: AppColors.orangeAccent)),
+              child: const Text('Done',
+                  style: TextStyle(color: AppColors.orangeAccent)),
             ),
           ],
         ),
@@ -1311,10 +1376,11 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
         children: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white54)),
           ),
-          const SizedBox(width: 12),
-          if (_role == AirShareRole.send)
+          if (_role == AirShareRole.send) ...[
+            const SizedBox(width: 12),
             ElevatedButton.icon(
               icon: const HugeIcon(
                 icon: HugeIcons.strokeRoundedSent,
@@ -1322,84 +1388,26 @@ class _AirShareDialogState extends ConsumerState<AirShareDialog> {
                 color: Colors.black,
                 strokeWidth: 2,
               ),
-              label: Text(
-                _mode == AirShareMode.spark ? 'Transmit via Spark' : 'Transmit via Flame Code',
-                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              label: const Text(
+                'Transmit Credential',
+                style:
+                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
               ),
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.orangeAccent),
-              onPressed: _isProcessing
-                  ? null
-                  : (_mode == AirShareMode.spark ? _sendViaSpark : _sendViaFlameCode),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.orangeAccent),
+              onPressed:
+                  _isProcessing || _sparkInputController.text.trim().isEmpty
+                      ? null
+                      : _sendViaSpark,
             ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ModeTabButton extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final List<List<dynamic>> icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ModeTabButton({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF262C3B) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? AppColors.orangeAccent.withValues(alpha: 0.6) : Colors.transparent,
-          ),
-        ),
-        child: Row(
-          children: [
-            HugeIcon(
-              icon: icon,
-              size: 20,
-              color: isSelected ? AppColors.orangeAccent : Colors.white38,
-              strokeWidth: 1.8,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isSelected ? Colors.white : Colors.white60,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: isSelected ? Colors.white70 : Colors.white30,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+/// V-022: signals a request body beyond the 64 KB receiver cap.
+class _OversizedBody implements Exception {
+  const _OversizedBody();
 }

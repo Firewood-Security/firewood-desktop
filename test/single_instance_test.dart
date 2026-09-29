@@ -3,10 +3,13 @@ import 'package:firewood_desktop/src/services/single_instance_lock.dart';
 
 void main() {
   group('SingleInstanceLock', () {
-    test('lockSocketPath is valid and non-empty', () {
+    test('lockSocketPath is valid, non-empty and never in /tmp', () {
       final path = SingleInstanceLock.lockSocketPath;
+      expect(path, isNotNull);
       expect(path, isNotEmpty);
       expect(path, contains('.sock'));
+      // V-023: the lock must never live in world-writable /tmp.
+      expect(path, isNot(startsWith('/tmp/')));
     });
 
     test('acquireOrFocus acquires lock and releases cleanly', () async {

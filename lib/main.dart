@@ -16,7 +16,8 @@ Future<void> main() async {
   // Strict single-instance enforcement: focus existing instance and exit if duplicate
   final isPrimary = await SingleInstanceLock.acquireOrFocus();
   if (!isPrimary) {
-    stdout.writeln('Firewood Desktop is already running. Existing window focused.');
+    stdout.writeln(
+        'Firewood Desktop is already running. Existing window focused.');
     exit(0);
   }
 

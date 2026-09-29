@@ -22,28 +22,45 @@ class AutoTypeService {
 
   /// Cached detection result
   static bool? _cachedAvailable;
+  static String? _resolvedXdotool;
+
+  /// Resolves xdotool to an absolute path, preferring system directories.
+  /// V-003: secrets must never reach a PATH lookup — a hijacked PATH could
+  /// otherwise route them to an attacker-controlled binary. Returns null
+  /// when no xdotool binary is found.
+  static String? _resolveXdotool() {
+    if (_resolvedXdotool != null) return _resolvedXdotool;
+    if (!Platform.isLinux) return null;
+
+    const preferred = [
+      '/usr/bin/xdotool',
+      '/bin/xdotool',
+      '/usr/local/bin/xdotool'
+    ];
+    for (final p in preferred) {
+      if (File(p).existsSync()) {
+        _resolvedXdotool = p;
+        return p;
+      }
+    }
+
+    // Fall back to a PATH scan (pure Dart — no `which` subprocess).
+    for (final dir in (Platform.environment['PATH'] ?? '').split(':')) {
+      if (dir.isEmpty || !dir.startsWith('/')) continue;
+      final p = '$dir/xdotool';
+      if (File(p).existsSync()) {
+        _resolvedXdotool = p;
+        return p;
+      }
+    }
+    return null;
+  }
 
   /// Checks if a compatible keyboard simulation tool is available on the host system.
   static Future<bool> isAvailable() async {
     if (_cachedAvailable != null) return _cachedAvailable!;
-
-    if (Platform.isLinux) {
-      if (File('/usr/bin/xdotool').existsSync() || File('/bin/xdotool').existsSync()) {
-        _cachedAvailable = true;
-        return true;
-      }
-      try {
-        final res = await Process.run('which', ['xdotool']);
-        _cachedAvailable = res.exitCode == 0;
-        return _cachedAvailable!;
-      } catch (_) {
-        _cachedAvailable = false;
-        return false;
-      }
-    }
-
-    _cachedAvailable = false;
-    return false;
+    _cachedAvailable = _resolveXdotool() != null;
+    return _cachedAvailable!;
   }
 
   /// Returns a human-friendly name of the active automation backend.
@@ -75,7 +92,8 @@ class AutoTypeService {
     if (!available) {
       return const AutoTypeResult(
         success: false,
-        message: 'AutoType backend (xdotool) not found. Please install xdotool.',
+        message:
+            'AutoType backend (xdotool) not found. Please install xdotool.',
       );
     }
 
@@ -86,7 +104,8 @@ class AutoTypeService {
     }
     onCountdownTick?.call(0);
 
-    final username = (item.fields['username'] ?? item.fields['email'] ?? '').toString();
+    final username =
+        (item.fields['username'] ?? item.fields['email'] ?? '').toString();
     final password = (item.fields['password'] ?? '').toString();
     final totpSecret = (item.fields['totp_secret'] ?? '').toString().trim();
 
@@ -167,21 +186,51 @@ class AutoTypeService {
   }
 
   static Future<void> _typeText(String text, int delayMs) async {
-    final res = await Process.run('xdotool', [
-      'type',
-      '--clearmodifiers',
-      '--delay',
-      delayMs.toString(),
-      '--',
-      text,
-    ]);
-    if (res.exitCode != 0) {
-      throw Exception('xdotool type error: ${res.stderr}');
+    final exe = _resolveXdotool();
+    if (exe == null) {
+      throw Exception('xdotool not found');
+    }
+
+    // V-003: never pass the text through argv — `/proc/<pid>/cmdline` is
+    // world-readable, so a command-line password would leak to any local
+    // user while typing.
+    //
+    // Delivery: `xdotool -` reads a script from stdin. The script contains
+    // only the fixed placeholder `$FW_SECRET`; xdotool's script tokenizer
+    // splits the script into tokens FIRST and then replaces a leading `$NAME`
+    // with the environment value verbatim (no re-tokenization, no
+    // re-expansion), so spaces, quotes, `$`, `#` and newlines inside the
+    // secret are typed literally and cannot inject extra commands. The value
+    // itself travels in `/proc/<pid>/environ`, which is owner-only
+    // (0400) — invisible to other local users.
+    final env = Map<String, String>.from(Platform.environment);
+    env.remove('DEBUG'); // keep xdotool from debug-printing script args
+    env['FW_SECRET'] = text;
+
+    final proc = await Process.start(exe, ['-'], environment: env);
+
+    proc.stdout.drain<void>();
+    proc.stderr.drain<void>();
+    try {
+      proc.stdin
+          .write('type --clearmodifiers --delay $delayMs -- \$FW_SECRET\n');
+      await proc.stdin.flush();
+    } finally {
+      await proc.stdin.close();
+    }
+
+    final code = await proc.exitCode;
+    if (code != 0) {
+      throw Exception('xdotool type failed (exit code $code)');
     }
   }
 
   static Future<void> _sendKey(String key) async {
-    final res = await Process.run('xdotool', [
+    final exe = _resolveXdotool();
+    if (exe == null) {
+      throw Exception('xdotool not found');
+    }
+    final res = await Process.run(exe, [
       'key',
       '--clearmodifiers',
       key,

@@ -1,6 +1,7 @@
 // Minimal desktop title bar: brand + drag region + window controls only.
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -74,13 +75,13 @@ class _HearthTitleBarState extends State<HearthTitleBar> with WindowListener {
                   strokeWidth: 2.0,
                 ),
             const SizedBox(width: AppSpacing.sm),
-            const Text(
-              AppStrings.appName,
-              style: TextStyle(
+            Text(
+              AppStrings.appName.toUpperCase(),
+              style: GoogleFonts.syncopate(
                 color: AppColors.ash,
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.4,
+                letterSpacing: 1.0,
               ),
             ),
             Expanded(

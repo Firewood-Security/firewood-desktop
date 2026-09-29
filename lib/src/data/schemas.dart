@@ -1,4 +1,7 @@
 // Isar collections for the desktop store. Ciphertext only for secrets.
+// V-009: `ItemRecord.title`/`type` are legacy read-fallback columns — core
+// writers always store '' and keep metadata inside `encryptedData`; vault
+// bootstrap material (salt/verifier/wrappedMEK) must stay readable pre-unlock.
 
 import 'package:isar/isar.dart';
 
@@ -43,6 +46,11 @@ class ItemRecord {
 class BurnerRecord {
   Id id = Isar.autoIncrement;
   late String passwordHash;
+
+  /// V-027: per-entry Argon2id salt. Null/absent on legacy rows, which were
+  /// hashed under the old fixed application salt (verify-only fallback).
+  List<int>? salt;
+
   late String label;
   late DateTime createdAt;
 }

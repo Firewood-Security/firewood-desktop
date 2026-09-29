@@ -1,6 +1,14 @@
 // Isar-backed [SecretStore] for desktop. Only ciphertext records are stored;
 // the decrypted key lives in memory for the session.
+//
+// V-009: the data directory is locked to 0700 and every file in it to 0600 at
+// startup (and after every reopen) — Isar files are created umask-derived
+// (0644 on default homes) and would otherwise be readable by other local
+// users. Item titles/types are never written to plaintext columns by any
+// core writer (the columns exist only as a read-fallback for legacy rows;
+// core re-blanks them via migrateVaultToZeroKnowledge on every unlock).
 
+import 'dart:io';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -23,6 +31,23 @@ class IsarSecretStore implements SecretStore {
       directory: dir.path,
       name: 'firewood_desktop',
     );
+    await _securePermissions(dir);
+  }
+
+  /// V-009: chmod 700 on the data directory, 600 on every file inside it.
+  static Future<void> _securePermissions(Directory dir) async {
+    if (!Platform.isLinux && !Platform.isMacOS) return;
+    try {
+      final dirRes = Process.runSync('chmod', ['700', dir.path]);
+      if (dirRes.exitCode != 0) return;
+      for (final entity in dir.listSync(followLinks: false)) {
+        if (entity is File) {
+          Process.runSync('chmod', ['600', entity.path]);
+        }
+      }
+    } catch (_) {
+      // Best effort — never block startup on a permission pass.
+    }
   }
 
   @override
@@ -45,7 +70,10 @@ class IsarSecretStore implements SecretStore {
 
   @override
   Future<void> putVault(StoredVault vault) async {
-    final existing = await _isar.vaultRecords.filter().vaultIdEqualTo(vault.vaultId).findFirst();
+    final existing = await _isar.vaultRecords
+        .filter()
+        .vaultIdEqualTo(vault.vaultId)
+        .findFirst();
     final row = VaultRecord()
       ..id = existing?.id ?? Isar.autoIncrement
       ..vaultId = vault.vaultId
@@ -74,13 +102,15 @@ class IsarSecretStore implements SecretStore {
 
   @override
   Future<StoredItem?> getItem(String itemId) async {
-    final row = await _isar.itemRecords.filter().itemIdEqualTo(itemId).findFirst();
+    final row =
+        await _isar.itemRecords.filter().itemIdEqualTo(itemId).findFirst();
     return row == null ? null : _toItem(row);
   }
 
   @override
   Future<void> putItem(StoredItem item) async {
-    final existing = await _isar.itemRecords.filter().itemIdEqualTo(item.itemId).findFirst();
+    final existing =
+        await _isar.itemRecords.filter().itemIdEqualTo(item.itemId).findFirst();
     final row = ItemRecord()
       ..id = existing?.id ?? Isar.autoIncrement
       ..itemId = item.itemId
@@ -107,6 +137,8 @@ class IsarSecretStore implements SecretStore {
         .map((r) => StoredBurner(
               id: r.id,
               passwordHash: r.passwordHash,
+              // V-027: null on legacy rows (pre-per-entry-salt schema).
+              salt: r.salt ?? const [],
               label: r.label,
               createdAt: r.createdAt,
             ))
@@ -118,6 +150,7 @@ class IsarSecretStore implements SecretStore {
     final row = BurnerRecord()
       ..id = burner.id == 0 ? Isar.autoIncrement : burner.id
       ..passwordHash = burner.passwordHash
+      ..salt = burner.salt.isEmpty ? null : burner.salt
       ..label = burner.label
       ..createdAt = burner.createdAt;
     await _isar.writeTxn(() => _isar.burnerRecords.put(row));
@@ -130,11 +163,29 @@ class IsarSecretStore implements SecretStore {
 
   @override
   Future<void> clearAll() async {
-    await _isar.writeTxn(() async {
-      await _isar.vaultRecords.clear();
-      await _isar.itemRecords.clear();
-      await _isar.burnerRecords.clear();
-    });
+    // V-009: delete the database FILES — a row-level clear() leaves page slack
+    // behind (old titles/hashes stay recoverable in freed pages). Close first
+    // so the open handle cannot resurrect content, then reopen an empty DB so
+    // the store stays usable for the subsequent re-setup.
+    final dir = await getApplicationSupportDirectory();
+    await _isar.close();
+    try {
+      for (final entity in dir.listSync(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (name.endsWith('.isar') || name.endsWith('.isar.lock')) {
+          try {
+            entity.deleteSync();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    _isar = await Isar.open(
+      [VaultRecordSchema, ItemRecordSchema, BurnerRecordSchema],
+      directory: dir.path,
+      name: 'firewood_desktop',
+    );
+    await _securePermissions(dir);
   }
 
   StoredItem _toItem(ItemRecord r) => StoredItem(

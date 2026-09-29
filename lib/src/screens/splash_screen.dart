@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firewood_design/firewood_design.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_icons.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -126,13 +127,13 @@ class _SplashScreenState extends State<SplashScreen>
                       fit: BoxFit.contain,
                     ),
                     const SizedBox(height: 14),
-                    const Text(
-                      'Firewood',
-                      style: TextStyle(
+                    Text(
+                      'FIREWOOD',
+                      style: GoogleFonts.syncopate(
                         color: AppColors.offWhite,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 2.0,
                       ),
                     ),
                     const SizedBox(height: 4),

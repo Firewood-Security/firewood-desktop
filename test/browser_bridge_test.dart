@@ -74,7 +74,8 @@ void main() {
     late _FakeSecretStore fakeStore;
 
     setUp(() {
-      tempSocketPath = '${Directory.systemTemp.path}/test-firewood-ipc-${DateTime.now().millisecondsSinceEpoch}.sock';
+      tempSocketPath =
+          '${Directory.systemTemp.path}/test-firewood-ipc-${DateTime.now().millisecondsSinceEpoch}.sock';
       fakeStore = _FakeSecretStore();
       container = ProviderContainer(
         overrides: [
@@ -95,9 +96,70 @@ void main() {
       }
     });
 
+    /// Wraps a command with this session's bridge token (V-002).
+    String authed(BrowserBridgeService bridge, String json) {
+      final msg = jsonDecode(json) as Map<String, dynamic>;
+      msg['auth'] = bridge.sessionToken;
+      return jsonEncode(msg);
+    }
+
+    test('rejects commands presented without the session token', () async {
+      final bridge = container.read(browserBridgeServiceProvider);
+      await bridge.startServer(
+          reader: container.read, customSocketPath: tempSocketPath);
+      expect(bridge.sessionToken, isNotNull);
+
+      final socket = await Socket.connect(
+        InternetAddress(tempSocketPath, type: InternetAddressType.unix),
+        0,
+      );
+
+      final completer = Completer<String>();
+      socket.listen((data) {
+        if (!completer.isCompleted) {
+          completer.complete(utf8.decode(data).trim());
+        }
+      });
+
+      // Adversarial: correct action, no token.
+      socket.write(
+          '{"action":"query_credentials","url":"https://example.com"}\n');
+      await socket.flush();
+
+      final resStr = await completer.future.timeout(const Duration(seconds: 2));
+      final res = jsonDecode(resStr) as Map<String, dynamic>;
+      expect(res['status'], equals('error'));
+      expect(res['error'], equals('unauthorized'));
+      expect(res.containsKey('credentials'), isFalse);
+
+      // Wrong token of equal length is also refused.
+      final msg = jsonDecode('{"action":"ping"}') as Map<String, dynamic>;
+      msg['auth'] = '0' * (bridge.sessionToken!.length);
+      final socket2 = await Socket.connect(
+        InternetAddress(tempSocketPath, type: InternetAddressType.unix),
+        0,
+      );
+      final completer2 = Completer<String>();
+      socket2.listen((data) {
+        if (!completer2.isCompleted) {
+          completer2.complete(utf8.decode(data).trim());
+        }
+      });
+      socket2.write('${jsonEncode(msg)}\n');
+      await socket2.flush();
+      final res2 = jsonDecode(
+              await completer2.future.timeout(const Duration(seconds: 2)))
+          as Map<String, dynamic>;
+      expect(res2['error'], equals('unauthorized'));
+
+      await socket.close();
+      await socket2.close();
+    });
+
     test('starts server and responds to ping', () async {
       final bridge = container.read(browserBridgeServiceProvider);
-      await bridge.startServer(reader: container.read, customSocketPath: tempSocketPath);
+      await bridge.startServer(
+          reader: container.read, customSocketPath: tempSocketPath);
       expect(bridge.isListening, isTrue);
 
       final socket = await Socket.connect(
@@ -114,7 +176,7 @@ void main() {
         }
       });
 
-      socket.write('{"action":"ping"}\n');
+      socket.write('${authed(bridge, '{"action":"ping"}')}\n');
       await socket.flush();
 
       final resStr = await completer.future.timeout(const Duration(seconds: 2));
@@ -128,9 +190,11 @@ void main() {
       await bridge.stopServer(customSocketPath: tempSocketPath);
     });
 
-    test('query_credentials returns locked when vault is not unlocked', () async {
+    test('query_credentials returns locked when vault is not unlocked',
+        () async {
       final bridge = container.read(browserBridgeServiceProvider);
-      await bridge.startServer(reader: container.read, customSocketPath: tempSocketPath);
+      await bridge.startServer(
+          reader: container.read, customSocketPath: tempSocketPath);
 
       final socket = await Socket.connect(
         InternetAddress(tempSocketPath, type: InternetAddressType.unix),
@@ -142,7 +206,8 @@ void main() {
         completer.complete(utf8.decode(data).trim());
       });
 
-      socket.write('{"action":"query_credentials","url":"https://github.com/login"}\n');
+      socket.write(
+          '${authed(bridge, '{"action":"query_credentials","url":"https://github.com/login"}')}\n');
       await socket.flush();
 
       final resStr = await completer.future.timeout(const Duration(seconds: 2));
@@ -155,7 +220,8 @@ void main() {
 
     test('generate_password produces requested length', () async {
       final bridge = container.read(browserBridgeServiceProvider);
-      await bridge.startServer(reader: container.read, customSocketPath: tempSocketPath);
+      await bridge.startServer(
+          reader: container.read, customSocketPath: tempSocketPath);
 
       final socket = await Socket.connect(
         InternetAddress(tempSocketPath, type: InternetAddressType.unix),
@@ -167,7 +233,8 @@ void main() {
         completer.complete(utf8.decode(data).trim());
       });
 
-      socket.write('{"action":"generate_password","length":28}\n');
+      socket.write(
+          '${authed(bridge, '{"action":"generate_password","length":28}')}\n');
       await socket.flush();
 
       final resStr = await completer.future.timeout(const Duration(seconds: 2));

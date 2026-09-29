@@ -15,7 +15,8 @@ class DesktopCommandPalette extends ConsumerStatefulWidget {
   const DesktopCommandPalette({super.key});
 
   @override
-  ConsumerState<DesktopCommandPalette> createState() => _DesktopCommandPaletteState();
+  ConsumerState<DesktopCommandPalette> createState() =>
+      _DesktopCommandPaletteState();
 }
 
 class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
@@ -112,7 +113,14 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
         subtitle: 'Master password, auto-lock, imports & exports',
         badge: 'SYSTEM',
         icon: HugeIcons.strokeRoundedSettings01,
-        keywords: const ['settings', 'preferences', 'backup', 'import', 'export', 'password'],
+        keywords: const [
+          'settings',
+          'preferences',
+          'backup',
+          'import',
+          'export',
+          'password'
+        ],
         action: () => ref.read(desktopTabProvider.notifier).state = 3,
       ),
       _Entry(
@@ -134,7 +142,10 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
     ];
 
     for (final item in _items) {
-      final user = item.fields['username'] ?? item.fields['email'] ?? item.fields['cardholder'] ?? '';
+      final user = item.fields['username'] ??
+          item.fields['email'] ??
+          item.fields['cardholder'] ??
+          '';
       final url = item.fields['url'] ?? item.fields['website'] ?? '';
       final sub = [
         if (user.toString().isNotEmpty) user.toString(),
@@ -167,15 +178,17 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
     final q = _controller.text.trim().toLowerCase();
     final all = _entries();
     if (q.isEmpty) return all;
-    return all.where((e) =>
-        e.label.toLowerCase().contains(q) ||
-        (e.subtitle != null && e.subtitle!.toLowerCase().contains(q)) ||
-        e.keywords.any((k) => k.toLowerCase().contains(q))).toList();
+    return all
+        .where((e) =>
+            e.label.toLowerCase().contains(q) ||
+            (e.subtitle != null && e.subtitle!.toLowerCase().contains(q)) ||
+            e.keywords.any((k) => k.toLowerCase().contains(q)))
+        .toList();
   }
 
   void _scrollToIndex(int index) {
     if (!_scrollController.hasClients) return;
-    const itemHeight = 56.0;
+    const itemHeight = 64.0;
     final targetOffset = index * itemHeight;
     final currentOffset = _scrollController.offset;
     final maxOffset = _scrollController.position.maxScrollExtent;
@@ -183,10 +196,193 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
     if (targetOffset < currentOffset) {
       _scrollController.jumpTo(targetOffset.clamp(0.0, maxOffset));
     } else if (targetOffset + itemHeight > currentOffset + viewportHeight) {
-      _scrollController.jumpTo((targetOffset + itemHeight - viewportHeight).clamp(0.0, maxOffset));
+      _scrollController.jumpTo(
+          (targetOffset + itemHeight - viewportHeight).clamp(0.0, maxOffset));
     }
   }
 
+  String _dossierUser(DecryptedItem item) {
+    return (item.fields['username'] ??
+            item.fields['email'] ??
+            item.fields['cardholder'] ??
+            item.fields['key_name'] ??
+            '')
+        .toString();
+  }
+
+  bool _hasTotp(DecryptedItem item) {
+    return ((item.fields['totp_secret'] ?? item.fields['totpSecret'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty);
+  }
+
+  String _bundleName(DecryptedItem item) {
+    return (item.fields['bundle'] ?? '').toString().trim();
+  }
+
+  String _dossierContentLine(DecryptedItem item) {
+    final type = ItemTypeExt.fromString(item.type);
+    final user = _dossierUser(item);
+    switch (type) {
+      case ItemType.card:
+        return user.isNotEmpty
+            ? 'Card: $user · CVV: ••••'
+            : 'CVV: ••••';
+      case ItemType.identity:
+        return user.isNotEmpty ? 'ID: $user' : 'ID record';
+      case ItemType.note:
+        return user.isNotEmpty ? 'Note: $user' : 'Secure note';
+      case ItemType.developerSecret:
+        return user.isNotEmpty
+            ? 'Key: $user · Secret: ••••'
+            : 'Secret: ••••';
+      case ItemType.login:
+        return user.isNotEmpty ? 'User: $user · Pass: ••••' : 'Pass: ••••';
+    }
+  }
+
+  Widget _buildTypeBadge(DecryptedItem item) {
+    final color = _badgeColor(item.type);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withOpacity(0.35), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          HugeIcon(
+            icon: _iconForType(item.type),
+            size: 10,
+            color: color,
+            strokeWidth: 2,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            item.type.toUpperCase(),
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.bold,
+              color: color,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDossierRow(_Entry entry, bool isSel) {
+    final item = entry.item!;
+    final bundle = _bundleName(item);
+    final hasTotp = _hasTotp(item);
+    final badgeColor = _badgeColor(item.type);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Title row: type-badge pill + bold title + 2FA/bundle mini-badges.
+        Row(
+          children: [
+            _buildTypeBadge(item),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                entry.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13.5,
+                  fontWeight:
+                      isSel ? FontWeight.bold : FontWeight.w700,
+                ),
+              ),
+            ),
+            if (bundle.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              _buildMiniBadge(bundle, Colors.white54),
+            ],
+            if (hasTotp) ...[
+              const SizedBox(width: 6),
+              _buildMiniBadge('2FA', badgeColor),
+            ],
+            if ((entry.item!.fields['password']?.isNotEmpty ?? false)) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: 'Copy password to clipboard',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () {
+                    final pw = entry.item!.fields['password']!;
+                    SecureClipboard.copy(
+                      context: context,
+                      text: pw,
+                      label: '${entry.item!.title} password',
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1F2432),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF2E3649)),
+                    ),
+                    child: const HugeIcon(
+                      icon: HugeIcons.strokeRoundedCopy01,
+                      size: 14,
+                      color: Colors.white70,
+                      strokeWidth: 1.8,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (isSel) ...[
+              const SizedBox(width: 8),
+              const HugeIcon(
+                icon: HugeIcons.strokeRoundedArrowRight01,
+                size: 16,
+                color: AppColors.orangeAccent,
+                strokeWidth: 2,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        // One-line labeled content beneath.
+        Text(
+          _dossierContentLine(item),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 11.5,
+          ),
+        ),
+      ],
+    );
+  }
   Color _badgeColor(String? badge) {
     if (badge == null) return Colors.white54;
     switch (badge.toUpperCase()) {
@@ -219,14 +415,16 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
     final k = event.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
       setState(() {
-        _index = (_index + 1).clamp(0, filtered.isEmpty ? 0 : filtered.length - 1);
+        _index =
+            (_index + 1).clamp(0, filtered.isEmpty ? 0 : filtered.length - 1);
       });
       _scrollToIndex(_index);
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.arrowUp) {
       setState(() {
-        _index = (_index - 1).clamp(0, filtered.isEmpty ? 0 : filtered.length - 1);
+        _index =
+            (_index - 1).clamp(0, filtered.isEmpty ? 0 : filtered.length - 1);
       });
       _scrollToIndex(_index);
       return KeyEventResult.handled;
@@ -258,7 +456,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
 
     if (!isOpen) return const SizedBox.shrink();
     final filtered = _filtered;
-    final selected = filtered.isEmpty ? -1 : _index.clamp(0, filtered.length - 1);
+    final selected =
+        filtered.isEmpty ? -1 : _index.clamp(0, filtered.length - 1);
 
     return Positioned.fill(
       child: Stack(
@@ -278,7 +477,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF13151D),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF262C3A), width: 1.2),
+                  border:
+                      Border.all(color: const Color(0xFF262C3A), width: 1.2),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.5),
@@ -292,7 +492,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                   children: [
                     // Search Bar Header
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 14),
                       child: Row(
                         children: [
                           const HugeIcon(
@@ -317,7 +518,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                 border: InputBorder.none,
                                 focusedBorder: InputBorder.none,
                                 enabledBorder: InputBorder.none,
-                                hintText: 'Search credentials, commands, or settings...',
+                                hintText:
+                                    'Search credentials, commands, or settings...',
                                 hintStyle: TextStyle(
                                   color: Colors.white38,
                                   fontSize: 15,
@@ -325,17 +527,21 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                               ),
                               onSubmitted: (_) {
                                 if (filtered.isNotEmpty) {
-                                  _run(filtered[_index.clamp(0, filtered.length - 1)].action);
+                                  _run(filtered[
+                                          _index.clamp(0, filtered.length - 1)]
+                                      .action);
                                 }
                               },
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1F2430),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFF2C3345)),
+                              border:
+                                  Border.all(color: const Color(0xFF2C3345)),
                             ),
                             child: const Text(
                               'ESC',
@@ -368,7 +574,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                   SizedBox(height: 12),
                                   Text(
                                     'No matching credentials or commands',
-                                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                                    style: TextStyle(
+                                        color: Colors.white54, fontSize: 14),
                                   ),
                                 ],
                               ),
@@ -376,7 +583,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                           : ListView.builder(
                               controller: _scrollController,
                               shrinkWrap: true,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 8),
                               itemCount: filtered.length,
                               itemBuilder: (context, i) {
                                 final entry = filtered[i];
@@ -385,28 +593,36 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                   borderRadius: BorderRadius.circular(8),
                                   onTap: () => _run(entry.action),
                                   child: Container(
-                                    margin: const EdgeInsets.symmetric(vertical: 2),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    margin:
+                                        const EdgeInsets.symmetric(vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 10),
                                     decoration: BoxDecoration(
                                       color: isSel
-                                          ? AppColors.orangeAccent.withOpacity(0.12)
+                                          ? AppColors.orangeAccent
+                                              .withOpacity(0.12)
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                         color: isSel
-                                            ? AppColors.orangeAccent.withOpacity(0.35)
+                                            ? AppColors.orangeAccent
+                                                .withOpacity(0.35)
                                             : Colors.transparent,
                                       ),
                                     ),
-                                    child: Row(
+                                    child: entry.item != null
+                                        ? _buildDossierRow(entry, isSel)
+                                        : Row(
                                       children: [
                                         Container(
                                           padding: const EdgeInsets.all(8),
                                           decoration: BoxDecoration(
                                             color: isSel
-                                                 ? AppColors.orangeAccent.withOpacity(0.2)
-                                                 : const Color(0xFF1A1E29),
-                                            borderRadius: BorderRadius.circular(6),
+                                                ? AppColors.orangeAccent
+                                                    .withOpacity(0.2)
+                                                : const Color(0xFF1A1E29),
+                                            borderRadius:
+                                                BorderRadius.circular(6),
                                           ),
                                           child: HugeIcon(
                                             icon: entry.icon,
@@ -420,14 +636,17 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                         const SizedBox(width: 14),
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(
                                                 entry.label,
                                                 style: TextStyle(
                                                   color: Colors.white,
                                                   fontSize: 14,
-                                                  fontWeight: isSel ? FontWeight.bold : FontWeight.w600,
+                                                  fontWeight: isSel
+                                                      ? FontWeight.bold
+                                                      : FontWeight.w600,
                                                 ),
                                               ),
                                               if (entry.subtitle != null) ...[
@@ -435,11 +654,13 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                                 Text(
                                                   entry.subtitle!,
                                                   style: TextStyle(
-                                                    color: Colors.white.withOpacity(0.45),
+                                                    color: Colors.white
+                                                        .withOpacity(0.45),
                                                     fontSize: 12,
                                                   ),
                                                   maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ],
                                             ],
@@ -447,12 +668,16 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                         ),
                                         if (entry.badge != null)
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 7, vertical: 2.5),
                                             decoration: BoxDecoration(
-                                              color: _badgeColor(entry.badge).withOpacity(0.14),
-                                              borderRadius: BorderRadius.circular(4),
+                                              color: _badgeColor(entry.badge)
+                                                  .withOpacity(0.14),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                               border: Border.all(
-                                                color: _badgeColor(entry.badge).withOpacity(0.35),
+                                                color: _badgeColor(entry.badge)
+                                                    .withOpacity(0.35),
                                                 width: 0.8,
                                               ),
                                             ),
@@ -467,29 +692,41 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                             ),
                                           ),
                                         if (entry.item != null &&
-                                            (entry.item!.fields['password']?.isNotEmpty ?? false)) ...[
+                                            (entry.item!.fields['password']
+                                                    ?.isNotEmpty ??
+                                                false)) ...[
                                           const SizedBox(width: 8),
                                           Tooltip(
-                                            message: 'Copy password to clipboard',
+                                            message:
+                                                'Copy password to clipboard',
                                             child: InkWell(
-                                              borderRadius: BorderRadius.circular(4),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                               onTap: () {
-                                                final pw = entry.item!.fields['password']!;
+                                                final pw = entry
+                                                    .item!.fields['password']!;
                                                 SecureClipboard.copy(
                                                   context: context,
                                                   text: pw,
-                                                  label: '${entry.item!.title} password',
+                                                  label:
+                                                      '${entry.item!.title} password',
                                                 );
                                               },
                                               child: Container(
-                                                padding: const EdgeInsets.all(5),
+                                                padding:
+                                                    const EdgeInsets.all(5),
                                                 decoration: BoxDecoration(
-                                                  color: const Color(0xFF1F2432),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: const Color(0xFF2E3649)),
+                                                  color:
+                                                      const Color(0xFF1F2432),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                  border: Border.all(
+                                                      color: const Color(
+                                                          0xFF2E3649)),
                                                 ),
                                                 child: const HugeIcon(
-                                                  icon: HugeIcons.strokeRoundedCopy01,
+                                                  icon: HugeIcons
+                                                      .strokeRoundedCopy01,
                                                   size: 14,
                                                   color: Colors.white70,
                                                   strokeWidth: 1.8,
@@ -501,7 +738,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                         if (isSel) ...[
                                           const SizedBox(width: 8),
                                           const HugeIcon(
-                                            icon: HugeIcons.strokeRoundedArrowRight01,
+                                            icon: HugeIcons
+                                                .strokeRoundedArrowRight01,
                                             size: 16,
                                             color: AppColors.orangeAccent,
                                             strokeWidth: 2,
@@ -518,7 +756,8 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                     // Footer Keyboard Shortcuts Hint
                     const Divider(height: 1, color: Color(0xFF222633)),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 10),
                       child: Row(
                         children: [
                           _buildHintKey('↑↓', 'Navigate'),

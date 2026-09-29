@@ -2,6 +2,7 @@
 // Narrow by design (see AppSizes.authMaxWidth) so inputs stay compact.
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import 'package:firewood_design/firewood_design.dart';
@@ -61,10 +62,11 @@ class AuthScaffold extends StatelessWidget {
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: GoogleFonts.syncopate(
                     color: AppColors.offWhite,
-                    fontSize: 20,
+                    fontSize: 17,
                     fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),

@@ -1,20 +1,22 @@
-// Dedicated Bluetooth sharing page: two cards (Send / Receive) that start an
-// app-to-app transfer, then a processing panel showing live transfer steps.
+// AirShare page: two clean action cards (Sender + Receiver).
+// Guide information moved to a dedicated Guide dialog button.
 
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hugeicons/hugeicons.dart';
 
+import 'package:firewood_core/firewood_core.dart';
 import 'package:firewood_design/firewood_design.dart';
 import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
 
 import '../providers.dart';
+import '../services/ble_share_transport.dart';
 import '../widgets/airshare_dialog.dart';
-
-enum _Stage { idle, working, done, error }
 
 class SharingPage extends ConsumerStatefulWidget {
   const SharingPage({super.key});
@@ -24,17 +26,80 @@ class SharingPage extends ConsumerStatefulWidget {
 }
 
 class _SharingPageState extends ConsumerState<SharingPage> {
-  _Stage _stage = _Stage.idle;
-  String _title = '';
-  String _step = '';
-  String _result = '';
+  bool _senderBusy = false;
+  bool _receiverBusy = false;
 
-  void _reset() => setState(() {
-        _stage = _Stage.idle;
-        _title = '';
-        _step = '';
-        _result = '';
-      });
+  @override
+  void initState() {
+    super.initState();
+    // V-012: the BLE transport must never pick a peer on its own — route
+    // every connection through an explicit user confirmation.
+    (ref.read(bluetoothTransportProvider) as BleShareTransport).peerConfirmer =
+        _confirmBlePeer;
+  }
+
+  /// V-012: presents the peers advertising the Firewood service and returns
+  /// the one the user picked, or null when they cancel (fails closed).
+  Future<BluetoothDevice?> _confirmBlePeer(
+      List<BlePeerCandidate> candidates) async {
+    if (!mounted) return null;
+    return showDialog<BluetoothDevice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceZinc,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppColors.borderZinc),
+        ),
+        title: const Text('Confirm the peer device',
+            style: TextStyle(color: AppColors.offWhite, fontSize: 16)),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Only continue if you recognise the other device — a nearby '
+                'attacker can advertise this service too.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: candidates.length,
+                  itemBuilder: (ctx, i) {
+                    final c = candidates[i];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.bluetooth,
+                          color: AppColors.orangeAccent),
+                      title: Text(c.name,
+                          style: const TextStyle(
+                              color: AppColors.offWhite, fontSize: 14)),
+                      subtitle: Text('${c.device.remoteId} · ${c.rssi} dBm',
+                          style: const TextStyle(
+                              color: AppColors.textMuted, fontSize: 11)),
+                      onTap: () => Navigator.of(ctx).pop(c.device),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text(AppStrings.cancel),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<String?> _promptPassword() async {
     final controller = TextEditingController();
@@ -56,47 +121,206 @@ class _SharingPageState extends ConsumerState<SharingPage> {
               controller: controller,
               obscureText: true,
               autofocus: true,
-              decoration: const InputDecoration(labelText: AppStrings.masterPassword),
+              decoration:
+                  const InputDecoration(labelText: AppStrings.masterPassword),
               onSubmitted: (v) => Navigator.pop(ctx, v),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text(AppStrings.cancel)),
-          FirewoodButton(label: 'Start', onPressed: () => Navigator.pop(ctx, controller.text)),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(AppStrings.cancel)),
+          FirewoodButton(
+              label: 'Start',
+              onPressed: () => Navigator.pop(ctx, controller.text)),
         ],
       ),
     );
     return (value == null || value.isEmpty) ? null : value;
   }
 
+  void _showGuide() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceZinc,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppColors.borderZinc),
+        ),
+        title: Row(
+          children: [
+            const HugeIcon(
+              icon: HugeIcons.strokeRoundedInformationCircle,
+              size: 20,
+              color: AppColors.orangeAccent,
+              strokeWidth: 1.8,
+            ),
+            const SizedBox(width: 10),
+            Text('AirShare Guide',
+                style: GoogleFonts.syncopate(
+                    color: AppColors.offWhite,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _guideStep(
+                '1',
+                'Prepare Devices',
+                'Open Firewood on both devices and connect to the same local Wi-Fi or Bluetooth range.',
+              ),
+              _guideStep(
+                '2',
+                'Select Transfer Role',
+                'Choose "Send Credentials" on the sender and "Receive Credentials" on the receiver.',
+              ),
+              _guideStep(
+                '3',
+                'Scan or Pair',
+                'Scan the animated QR code on screen or establish an encrypted direct Bluetooth session.',
+              ),
+              _guideStep(
+                '4',
+                'Zero Cloud Security',
+                'Payload is encrypted point-to-point (X25519 + ChaCha20-Poly1305). Zero cloud, zero servers.',
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.orangeAccent.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: AppColors.orangeAccent.withValues(alpha: 0.25)),
+                ),
+                child: const Row(
+                  children: [
+                    HugeIcon(
+                      icon: HugeIcons.strokeRoundedShieldCheck,
+                      size: 16,
+                      color: AppColors.orangeAccent,
+                      strokeWidth: 1.8,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'App-to-app only — zero cloud, zero servers. Your data never leaves your devices.',
+                        style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 11,
+                            height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FirewoodButton(label: 'Got it', onPressed: () => Navigator.pop(ctx)),
+        ],
+      ),
+    );
+  }
+
+  Widget _guideStep(String step, String title, String desc) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardZinc,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderZinc.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: AppColors.orangeAccent.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.orangeAccent.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                step,
+                style: const TextStyle(
+                  color: AppColors.orangeAccent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.offWhite,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  desc,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _sendVault() async {
     final password = await _promptPassword();
     if (password == null || !mounted) return;
-
-    setState(() {
-      _stage = _Stage.working;
-      _title = 'Sending vault';
-      _step = 'Encrypting package…';
-    });
-
+    setState(() => _senderBusy = true);
     try {
       final bytes = await ref.read(backupServiceProvider).exportVault(password);
       if (!mounted) return;
-      setState(() => _step = 'Searching for a nearby Firewood device…');
       await ref.read(bluetoothTransportProvider).send(
             fileName: 'firewood-vault.firewood',
             bytes: bytes,
           );
-      setState(() {
-        _stage = _Stage.done;
-        _result = 'Vault sent to the paired device.';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Vault sent successfully'),
+          backgroundColor: Color(0xFF1A2E22),
+        ));
+      }
     } catch (e) {
-      setState(() {
-        _stage = _Stage.error;
-        _result = '$e';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Transfer failed: $e'),
+          backgroundColor: AppColors.roseAccent,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _senderBusy = false);
     }
   }
 
@@ -109,12 +333,7 @@ class _SharingPageState extends ConsumerState<SharingPage> {
     final password = await _promptPassword();
     if (password == null || !mounted) return;
 
-    setState(() {
-      _stage = _Stage.working;
-      _title = 'Sending file';
-      _step = 'Encrypting ${file.name}…';
-    });
-
+    setState(() => _senderBusy = true);
     try {
       final bytes = await File(path).readAsBytes();
       final packed = await ref.read(fileCryptoServiceProvider).encryptFile(
@@ -123,41 +342,50 @@ class _SharingPageState extends ConsumerState<SharingPage> {
             fileName: file.name,
           );
       if (!mounted) return;
-      setState(() => _step = 'Searching for a nearby Firewood device…');
       await ref.read(bluetoothTransportProvider).send(
             fileName: '${file.name}.firewood',
             bytes: packed,
           );
-      setState(() {
-        _stage = _Stage.done;
-        _result = '${file.name} sent.';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${file.name} sent successfully'),
+          backgroundColor: const Color(0xFF1A2E22),
+        ));
+      }
     } catch (e) {
-      setState(() {
-        _stage = _Stage.error;
-        _result = '$e';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Transfer failed: $e'),
+          backgroundColor: AppColors.roseAccent,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _senderBusy = false);
     }
   }
 
   Future<void> _receive() async {
-    setState(() {
-      _stage = _Stage.working;
-      _title = 'Receiving';
-      _step = 'Waiting for an incoming app-to-app transfer…';
-    });
-
+    setState(() => _receiverBusy = true);
     final transport = ref.read(bluetoothTransportProvider);
     try {
       await transport.startListening();
-      final sent = await transport.receive();
-      await transport.stopListening();
+      final SentFile? sent;
+      try {
+        // V-012/V-047: receive() can now fail closed (hostile frame header,
+        // unconfirmed peer) — always tear the listener down, or the next
+        // attempt would start on a half-open session.
+        sent = await transport.receive();
+      } finally {
+        await transport.stopListening();
+      }
 
       if (sent == null) {
-        setState(() {
-          _stage = _Stage.error;
-          _result = 'No incoming transfer was received.';
-        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No incoming transfer received'),
+            backgroundColor: AppColors.roseAccent,
+          ));
+        }
         return;
       }
 
@@ -165,278 +393,186 @@ class _SharingPageState extends ConsumerState<SharingPage> {
         dialogTitle: 'Save received .firewood',
         fileName: sent.fileName,
       );
-      if (savePath == null) {
-        _reset();
-        return;
-      }
+      if (savePath == null) return;
       await File(savePath).writeAsBytes(sent.bytes, flush: true);
-      setState(() {
-        _stage = _Stage.done;
-        _result = 'Saved to $savePath';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Saved to $savePath'),
+          backgroundColor: const Color(0xFF1A2E22),
+        ));
+      }
     } catch (e) {
-      setState(() {
-        _stage = _Stage.error;
-        _result = '$e';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Receive failed: $e'),
+          backgroundColor: AppColors.roseAccent,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _receiverBusy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppSizes.dashboardMaxWidth),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Bluetooth Sharing',
-                  style: TextStyle(
-                      color: AppColors.offWhite, fontSize: 22, fontWeight: FontWeight.bold)),
-              const SizedBox(height: AppSpacing.xs),
-              const Text('Device-to-device transfer of encrypted .firewood files & credentials',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-              const SizedBox(height: AppSpacing.xl),
-
-              // AirShare (Spark QR & 4-Digit Flame Code) Responsive Hero Card
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF1B1E28),
-                      Color(0xFF151821),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: AppRadii.lgAll,
-                  border: Border.all(
-                    color: AppColors.orangeAccent.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: const Color(0xFF0D0E12),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header ──────────────────────────────────────────────────
+                Row(
                   children: [
-                    Row(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.orangeAccent.withValues(alpha: 0.15),
-                            borderRadius: AppRadii.mdAll,
-                            border: Border.all(
-                              color: AppColors.orangeAccent.withValues(alpha: 0.4),
-                            ),
+                        Text(
+                          'AIRSHARE',
+                          style: GoogleFonts.syncopate(
+                            color: AppColors.offWhite,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
                           ),
-                          child: const Center(
-                            child: HugeIcon(
-                              icon: HugeIcons.strokeRoundedShare08,
-                              size: 22,
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Encrypted device-to-device credential transfer',
+                          style: TextStyle(
+                              color: AppColors.textMuted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: _showGuide,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceZinc,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color:
+                                AppColors.orangeAccent.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            HugeIcon(
+                              icon: HugeIcons.strokeRoundedInformationCircle,
+                              size: 15,
                               color: AppColors.orangeAccent,
                               strokeWidth: 2,
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Text(
-                                    'Firewood AirShare',
-                                    style: TextStyle(
-                                      color: AppColors.offWhite,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.orangeAccent.withValues(alpha: 0.18),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: AppColors.orangeAccent.withValues(alpha: 0.4),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Spark QR + 4-Digit Flame Code',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.orangeAccent,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            SizedBox(width: 6),
+                            Text(
+                              'Guide',
+                              style: TextStyle(
+                                color: AppColors.offWhite,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
                               ),
-                              const SizedBox(height: 2),
-                              const Text(
-                                'Zero cloud relays, zero disk trace. Backed by X25519 & ChaCha20-Poly1305.',
-                                style: TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: [
-                        ElevatedButton.icon(
-                          icon: const HugeIcon(
-                            icon: HugeIcons.strokeRoundedUpload04,
-                            size: 14,
-                            color: Colors.black,
-                            strokeWidth: 2,
-                          ),
-                          label: const Text(
-                            'AirShare Send',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.orangeAccent,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                          ),
-                          onPressed: () => AirShareDialog.show(
-                            context,
-                            role: AirShareRole.send,
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          icon: const HugeIcon(
-                            icon: HugeIcons.strokeRoundedDownload04,
-                            size: 14,
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                          label: const Text(
-                            'AirShare Receive',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFF384055)),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                          ),
-                          onPressed: () => AirShareDialog.show(
-                            context,
-                            role: AirShareRole.receive,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
+                const SizedBox(height: AppSpacing.xxl),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: _RoleCard(
-                      icon: HugeIcons.strokeRoundedShare08,
-                      title: 'Sender',
-                      description: 'Encrypt and send your vault or a file to a nearby '
-                          'Firewood app.',
-                      actions: [
-                        FirewoodButton(
-                          label: 'Send Vault',
-                          icon: HugeIcons.strokeRoundedSquareLock02,
-                          fullWidth: true,
-                          onPressed: _sendVault,
+                // ── Two cards ────────────────────────────────────────────────
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Sender
+                      Expanded(
+                        child: _ShareCard(
+                          icon: HugeIcons.strokeRoundedUpload04,
+                          accentColor: AppColors.orangeAccent,
+                          label: 'SENDER',
+                          title: 'Send Credentials',
+                          description:
+                              'Share credentials via QR or whole vault over Bluetooth',
+                          busy: _senderBusy,
+                          actions: [
+                            _ShareAction(
+                              icon: HugeIcons.strokeRoundedQrCode,
+                              label: 'Send via AirShare (QR)',
+                              isPrimary: true,
+                              onPressed: () => AirShareDialog.show(
+                                context,
+                                role: AirShareRole.send,
+                              ),
+                            ),
+                            _ShareAction(
+                              icon: HugeIcons.strokeRoundedSquareLock02,
+                              label: 'Send Vault (Bluetooth)',
+                              onPressed: _sendVault,
+                            ),
+                          ],
+                          auxiliaryAction: TextButton.icon(
+                            onPressed: _senderBusy ? null : _sendFile,
+                            icon: const HugeIcon(
+                              icon: HugeIcons.strokeRoundedFileKey,
+                              size: 13,
+                              color: AppColors.textMuted,
+                              strokeWidth: 1.6,
+                            ),
+                            label: const Text(
+                              'Send encrypted file instead',
+                              style: TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: AppSpacing.sm),
-                        FirewoodButton(
-                          label: 'Send File',
-                          icon: HugeIcons.strokeRoundedFileKey,
-                          variant: FirewoodButtonVariant.secondary,
-                          fullWidth: true,
-                          onPressed: _sendFile,
+                      ),
+                      const SizedBox(width: AppSpacing.xl),
+                      // Receiver
+                      Expanded(
+                        child: _ShareCard(
+                          icon: HugeIcons.strokeRoundedDownload04,
+                          accentColor: AppColors.orangeAccent,
+                          label: 'RECEIVER',
+                          title: 'Receive Credentials',
+                          description:
+                              'Accept incoming transfers from nearby Firewood devices',
+                          busy: _receiverBusy,
+                          actions: [
+                            _ShareAction(
+                              icon: HugeIcons.strokeRoundedQrCode,
+                              label: 'Receive via AirShare (QR)',
+                              isPrimary: true,
+                              onPressed: () => AirShareDialog.show(
+                                context,
+                                role: AirShareRole.receive,
+                              ),
+                            ),
+                            _ShareAction(
+                              icon: HugeIcons.strokeRoundedBluetooth,
+                              label: 'Receive Vault (Bluetooth)',
+                              onPressed: _receive,
+                            ),
+                          ],
+                          auxiliaryAction: const SizedBox(height: 32),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: AppSpacing.lg),
-                  Expanded(
-                    child: _RoleCard(
-                      icon: HugeIcons.strokeRoundedDownload04,
-                      title: 'Receiver',
-                      description: 'Listen for an incoming encrypted transfer and '
-                          'save it as a .firewood file.',
-                      actions: [
-                        FirewoodButton(
-                          label: 'Receive',
-                          icon: HugeIcons.strokeRoundedBluetooth,
-                          fullWidth: true,
-                          onPressed: _receive,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              const Row(
-                children: [
-                  HugeIcon(
-                    icon: HugeIcons.strokeRoundedInformationCircle,
-                    size: 15,
-                    color: AppColors.textMuted,
-                    strokeWidth: 1.8,
-                  ),
-                  SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      'App-to-app only — the other device must be running Firewood '
-                      'with Bluetooth sharing enabled.',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-
-              if (_stage != _Stage.idle) ...[
-                const SizedBox(height: AppSpacing.xl),
-                _ProcessingPanel(
-                  stage: _stage,
-                  title: _title,
-                  step: _step,
-                  result: _result,
-                  onDone: _reset,
-                  onRetry: _reset,
                 ),
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -444,17 +580,27 @@ class _SharingPageState extends ConsumerState<SharingPage> {
   }
 }
 
-class _RoleCard extends StatelessWidget {
+// ─── Share Card ───────────────────────────────────────────────────────────────
+
+class _ShareCard extends StatelessWidget {
   final List<List<dynamic>> icon;
+  final Color accentColor;
+  final String label;
   final String title;
   final String description;
-  final List<Widget> actions;
+  final bool busy;
+  final List<_ShareAction> actions;
+  final Widget? auxiliaryAction;
 
-  const _RoleCard({
+  const _ShareCard({
     required this.icon,
+    required this.accentColor,
+    required this.label,
     required this.title,
     required this.description,
+    required this.busy,
     required this.actions,
+    this.auxiliaryAction,
   });
 
   @override
@@ -463,120 +609,188 @@ class _RoleCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
         color: AppColors.surfaceZinc,
-        borderRadius: AppRadii.lgAll,
-        border: Border.all(color: AppColors.borderZinc),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.borderZinc.withValues(alpha: 0.6),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: AppColors.ember.withValues(alpha: 0.12),
-              borderRadius: AppRadii.mdAll,
-              border: Border.all(color: AppColors.ember.withValues(alpha: 0.3)),
-            ),
-            child: Center(
-              child: HugeIcon(
-                icon: icon,
-                size: 24,
-                color: AppColors.emberBright,
-                strokeWidth: 1.8,
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceZinc,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.borderZinc.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Center(
+                  child: HugeIcon(
+                    icon: icon,
+                    size: 22,
+                    color: accentColor,
+                    strokeWidth: 2,
+                  ),
+                ),
               ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: GoogleFonts.syncopate(
+                        color: accentColor,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.offWhite,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (busy)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.orangeAccent,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            description,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(title,
-              style: const TextStyle(
-                  color: AppColors.offWhite, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: AppSpacing.xs),
-          Text(description,
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4)),
-          const SizedBox(height: AppSpacing.xl),
-          ...actions,
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Divider(
+              height: 1,
+              thickness: 1,
+              color: AppColors.borderZinc.withValues(alpha: 0.35),
+            ),
+          ),
+          for (int i = 0; i < actions.length; i++) ...[
+            _ShareActionButton(action: actions[i], accentColor: accentColor),
+            if (i < actions.length - 1) const SizedBox(height: AppSpacing.sm),
+          ],
+          if (auxiliaryAction != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Center(child: auxiliaryAction!),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ProcessingPanel extends StatelessWidget {
-  final _Stage stage;
-  final String title;
-  final String step;
-  final String result;
-  final VoidCallback onDone;
-  final VoidCallback onRetry;
+// ─── Action data model ────────────────────────────────────────────────────────
 
-  const _ProcessingPanel({
-    required this.stage,
-    required this.title,
-    required this.step,
-    required this.result,
-    required this.onDone,
-    required this.onRetry,
+class _ShareAction {
+  final List<List<dynamic>> icon;
+  final String label;
+  final bool isPrimary;
+  final VoidCallback onPressed;
+
+  const _ShareAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.isPrimary = false,
   });
+}
+
+// ─── Action button ────────────────────────────────────────────────────────────
+
+class _ShareActionButton extends StatelessWidget {
+  final _ShareAction action;
+  final Color accentColor;
+
+  const _ShareActionButton({required this.action, required this.accentColor});
 
   @override
   Widget build(BuildContext context) {
-    final isWorking = stage == _Stage.working;
-    final isDone = stage == _Stage.done;
-    final color = isDone
-        ? AppColors.mintAccent
-        : stage == _Stage.error
-            ? AppColors.roseAccent
-            : AppColors.emberBright;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceZinc,
-        borderRadius: AppRadii.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          if (isWorking)
-            const SizedBox(
-              width: 26,
-              height: 26,
-              child: CircularProgressIndicator(strokeWidth: 2.6, color: AppColors.emberBright),
-            )
-          else
-            HugeIcon(
-              icon: isDone
-                  ? HugeIcons.strokeRoundedCheckmarkCircle01
-                  : HugeIcons.strokeRoundedAlert02,
-              size: 26,
-              color: color,
-              strokeWidth: 1.8,
-            ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isWorking ? title : (isDone ? 'Transfer complete' : 'Transfer failed'),
-                  style: const TextStyle(
-                      color: AppColors.offWhite, fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  isWorking ? step : result,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                ),
-              ],
+    if (action.isPrimary) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          icon: HugeIcon(
+            icon: action.icon,
+            size: 16,
+            color: Colors.black,
+            strokeWidth: 2,
+          ),
+          label: Text(
+            action.label,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
             ),
           ),
-          if (!isWorking)
-            FirewoodButton(
-              label: isDone ? 'Done' : 'Close',
-              variant: FirewoodButtonVariant.secondary,
-              onPressed: isDone ? onDone : onRetry,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: accentColor,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(11),
             ),
-        ],
+          ),
+          onPressed: action.onPressed,
+        ),
+      );
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        icon: HugeIcon(
+          icon: action.icon,
+          size: 16,
+          color: AppColors.offWhite,
+          strokeWidth: 1.8,
+        ),
+        label: Text(
+          action.label,
+          style: const TextStyle(
+            color: AppColors.offWhite,
+            fontWeight: FontWeight.w600,
+            fontSize: 12.5,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(
+            color: AppColors.borderZinc.withValues(alpha: 0.75),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
+          ),
+        ),
+        onPressed: action.onPressed,
       ),
     );
   }

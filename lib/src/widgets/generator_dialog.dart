@@ -48,7 +48,8 @@ class PasswordGeneratorDialog extends StatefulWidget {
   }
 
   @override
-  State<PasswordGeneratorDialog> createState() => _PasswordGeneratorDialogState();
+  State<PasswordGeneratorDialog> createState() =>
+      _PasswordGeneratorDialogState();
 }
 
 class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
@@ -140,7 +141,7 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                       const Text(
                         'Password Generator',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
@@ -152,6 +153,69 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                           fontSize: 12,
                           color: Colors.white.withOpacity(0.5),
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          // Pill 1: live mode + length
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppColors.orangeAccent.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: AppColors.orangeAccent
+                                    .withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              'Password • ${_length.toInt()} chars',
+                              style: const TextStyle(
+                                color: AppColors.orangeAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          // Pill 2: offline guarantee
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A1D26),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFF2A2F3D),
+                                width: 1,
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                HugeIcon(
+                                  icon: HugeIcons.strokeRoundedShield01,
+                                  size: 11,
+                                  color: Colors.white38,
+                                  strokeWidth: 1.8,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'OFFLINE',
+                                  style: TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -196,9 +260,10 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Regenerate',
+                    visualDensity: VisualDensity.compact,
                     icon: const HugeIcon(
                       icon: HugeIcons.strokeRoundedRefresh,
-                      size: 20,
+                      size: 18,
                       color: AppColors.orangeAccent,
                       strokeWidth: 1.8,
                     ),
@@ -206,11 +271,12 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                   ),
                   IconButton(
                     tooltip: _copied ? 'Copied!' : 'Copy to clipboard',
+                    visualDensity: VisualDensity.compact,
                     icon: HugeIcon(
                       icon: _copied
                           ? HugeIcons.strokeRoundedTick02
                           : HugeIcons.strokeRoundedCopy01,
-                      size: 20,
+                      size: 18,
                       color: _copied ? AppColors.mintAccent : Colors.white70,
                       strokeWidth: 1.8,
                     ),
@@ -258,7 +324,8 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                 ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E222D),
                     borderRadius: BorderRadius.circular(6),
@@ -315,7 +382,8 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                         _regenerate();
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 3),
                         decoration: BoxDecoration(
                           color: _length.toInt() == p
                               ? AppColors.orangeAccent.withOpacity(0.18)
@@ -354,31 +422,63 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
               ),
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _buildCompactToggle('A-Z Uppercase', _uppercase, (v) {
-                  if (!v && !_lowercase && !_numbers && !_symbols) return;
-                  setState(() => _uppercase = v);
-                  _regenerate();
-                }),
-                _buildCompactToggle('a-z Lowercase', _lowercase, (v) {
-                  if (!v && !_uppercase && !_numbers && !_symbols) return;
-                  setState(() => _lowercase = v);
-                  _regenerate();
-                }),
-                _buildCompactToggle('0-9 Numbers', _numbers, (v) {
-                  if (!v && !_uppercase && !_lowercase && !_symbols) return;
-                  setState(() => _numbers = v);
-                  _regenerate();
-                }),
-                _buildCompactToggle('!@# Symbols', _symbols, (v) {
-                  if (!v && !_uppercase && !_lowercase && !_numbers) return;
-                  setState(() => _symbols = v);
-                  _regenerate();
-                }),
-              ],
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF161922),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF262B38)),
+              ),
+              child: Column(
+                children: [
+                  _buildCharsetRow(
+                    icon: HugeIcons.strokeRoundedArrangeByLettersAZ,
+                    label: 'A-Z Uppercase',
+                    description: 'Uppercase letters',
+                    value: _uppercase,
+                    onChanged: (v) {
+                      if (!v && !_lowercase && !_numbers && !_symbols) return;
+                      setState(() => _uppercase = v);
+                      _regenerate();
+                    },
+                  ),
+                  _charsetDivider(),
+                  _buildCharsetRow(
+                    icon: HugeIcons.strokeRoundedArrangeByLettersZA,
+                    label: 'a-z Lowercase',
+                    description: 'Lowercase letters',
+                    value: _lowercase,
+                    onChanged: (v) {
+                      if (!v && !_uppercase && !_numbers && !_symbols) return;
+                      setState(() => _lowercase = v);
+                      _regenerate();
+                    },
+                  ),
+                  _charsetDivider(),
+                  _buildCharsetRow(
+                    icon: HugeIcons.strokeRoundedArrangeByNumbers19,
+                    label: '0-9 Numbers',
+                    description: 'Numbers',
+                    value: _numbers,
+                    onChanged: (v) {
+                      if (!v && !_uppercase && !_lowercase && !_symbols) return;
+                      setState(() => _numbers = v);
+                      _regenerate();
+                    },
+                  ),
+                  _charsetDivider(),
+                  _buildCharsetRow(
+                    icon: HugeIcons.strokeRoundedAsterisk,
+                    label: '!@# Symbols',
+                    description: 'Symbols',
+                    value: _symbols,
+                    onChanged: (v) {
+                      if (!v && !_uppercase && !_lowercase && !_numbers) return;
+                      setState(() => _symbols = v);
+                      _regenerate();
+                    },
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 28),
 
@@ -395,7 +495,8 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                   ),
                   label: const Text('Regenerate'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
                     side: const BorderSide(color: Color(0xFF2E333F)),
                     foregroundColor: Colors.white,
                   ),
@@ -416,7 +517,8 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                     backgroundColor:
                         _copied ? AppColors.mintAccent : AppColors.orangeAccent,
                     foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
                     textStyle: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   onPressed: _copy,
@@ -434,7 +536,8 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF262C38),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
                     ),
                     onPressed: () => widget.onUsePassword!(_generatedPassword),
                   ),
@@ -447,43 +550,63 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
     );
   }
 
-  Widget _buildCompactToggle(String label, bool value, Function(bool) onChanged) {
+  Widget _charsetDivider() {
+    return const Divider(
+      height: 1,
+      thickness: 1,
+      indent: 50,
+      color: Color(0xFF262B38),
+    );
+  }
+
+  Widget _buildCharsetRow({
+    required List<List<dynamic>> icon,
+    required String label,
+    required String description,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
+      hoverColor: Colors.white.withOpacity(0.04),
       onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: value
-              ? AppColors.orangeAccent.withOpacity(0.12)
-              : const Color(0xFF161922),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: value
-                ? AppColors.orangeAccent.withOpacity(0.6)
-                : const Color(0xFF262B38),
-          ),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             HugeIcon(
-              icon: value
-                  ? HugeIcons.strokeRoundedTick02
-                  : HugeIcons.strokeRoundedSquare,
-              size: 16,
+              icon: icon,
+              size: 18,
               color: value ? AppColors.orangeAccent : Colors.white38,
-              strokeWidth: 2,
+              strokeWidth: 1.8,
             ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: value ? FontWeight.w600 : FontWeight.normal,
-                color: value ? Colors.white : Colors.white60,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.45),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            Switch(
+              value: value,
+              activeColor: AppColors.orangeAccent,
+              onChanged: onChanged,
             ),
           ],
         ),

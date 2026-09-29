@@ -1,0 +1,38 @@
+# gitleaks configuration — firewood-desktop
+# Loaded automatically when gitleaks scans this repo:
+#   gitleaks git . --redact --no-banner
+#
+# Policy: every finding fails the build. Allowlisting is reserved for values
+# that are public by design, with a recorded justification. Never allowlist
+# a private key, token, or password.
+#
+# CRITICAL: `[extend] useDefault = true` is mandatory — a config without it
+# REPLACES the default ruleset and the scan becomes vacuously green (proven
+# against gitleaks 8.30.1, 2026-09-29).
+#
+# Triaged 2026-09-29 against gitleaks 8.30.1 (git + dir modes) with default
+# rules active: repo scans clean with this config; without it the burner
+# fixture and build artifacts reappear.
+
+title = "firewood-desktop gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+1) Build outputs (justified exception, 2026-09-29): build/ and .dart_tool/
+   contain compiled Dart kernels where committed test fixtures string-match
+   key-shaped patterns. Both are gitignored — history scans never see them —
+   excluded so working-tree (dir mode) scans stay meaningful.
+2) legacy-duress-42 (justified exception, 2026-09-29): constant in
+   test/burner_v027_test.dart anchoring a regression hash — a fake value
+   committed to the public repo, not a credential.
+"""
+paths = [
+  '''(^|/)\.dart_tool/''',
+  '''(^|/)build/''',
+]
+stopwords = [
+  '''legacy-duress-42''',
+]

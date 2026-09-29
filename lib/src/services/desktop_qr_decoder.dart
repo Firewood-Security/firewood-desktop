@@ -24,7 +24,8 @@ class DesktopQrDecoder {
           final r = pixel.r.toInt();
           final g = pixel.g.toInt();
           final b = pixel.b.toInt();
-          pixels[y * width + x] = ((r * 299 + g * 587 + b * 114) ~/ 1000).clamp(0, 255);
+          pixels[y * width + x] =
+              ((r * 299 + g * 587 + b * 114) ~/ 1000).clamp(0, 255);
         }
       }
 

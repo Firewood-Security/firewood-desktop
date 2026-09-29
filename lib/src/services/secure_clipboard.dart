@@ -1,5 +1,15 @@
 // Secure clipboard manager with timed auto-wipe and lock cleanup.
-// Protects secrets from persistent exposure in system clipboard history.
+//
+// Platform reality (V-018, honesty per G-08): desktop clipboard APIs
+// (GTK/X11/Wayland) expose no "sensitive" flag, and clipboard managers
+// (GPaste, CopyQ, Klipper, …) record each copy the instant it is made.
+// The timed wipe below clears OUR clipboard entry after the timeout — it
+// cannot retroactively erase what a manager already stored, and the UI says
+// exactly that instead of claiming protection. Retention: the plaintext
+// exists only inside the pending wipe's closure (≤ timeout seconds, freed
+// earlier on clear()/lock); no static field holds it until wipe or lock,
+// and the window-close path wipes before the process dies (best-effort —
+// crashes/SIGKILL bypass any Dart-side cleanup).
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -11,7 +21,6 @@ class SecureClipboard {
   SecureClipboard._();
 
   static Timer? _clearTimer;
-  static String? _lastCopied;
 
   /// Copies sensitive [text] to the clipboard with an automatic [timeoutSeconds] wipe timer.
   static void copy({
@@ -21,7 +30,10 @@ class SecureClipboard {
     int timeoutSeconds = 30,
   }) {
     _clearTimer?.cancel();
-    _lastCopied = text;
+    // V-018: captured only by the pending wipe closure below — the old
+    // `static _lastCopied` (which retained the plaintext until wipe/lock) is
+    // gone.
+    final expected = text;
 
     Clipboard.setData(ClipboardData(text: text));
 
@@ -37,7 +49,8 @@ class SecureClipboard {
         ),
         content: Row(
           children: [
-            const Icon(Icons.shield_outlined, color: AppColors.orangeAccent, size: 20),
+            const Icon(Icons.shield_outlined,
+                color: AppColors.orangeAccent, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -53,7 +66,7 @@ class SecureClipboard {
                     ),
                   ),
                   Text(
-                    'Auto-clearing in ${timeoutSeconds}s to protect memory',
+                    'Clearing in ${timeoutSeconds}s — clipboard managers may keep their own history',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.white.withOpacity(0.6),
@@ -76,8 +89,10 @@ class SecureClipboard {
     );
 
     _clearTimer = Timer(Duration(seconds: timeoutSeconds), () async {
+      // V-018: compare against the closure-captured value — only clear if
+      // the clipboard still holds what WE copied (a newer user copy wins).
       final current = await Clipboard.getData(Clipboard.kTextPlain);
-      if (current?.text == _lastCopied) {
+      if (current?.text == expected) {
         clear();
       }
     });
@@ -87,7 +102,6 @@ class SecureClipboard {
   static void clear() {
     _clearTimer?.cancel();
     _clearTimer = null;
-    _lastCopied = null;
     Clipboard.setData(const ClipboardData(text: ''));
   }
 }

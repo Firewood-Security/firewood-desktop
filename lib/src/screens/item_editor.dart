@@ -8,6 +8,7 @@ import 'package:firewood_core/firewood_core.dart';
 import 'package:firewood_design/firewood_design.dart';
 
 import '../theme/app_icons.dart';
+import '../services/bundle_service.dart';
 import '../widgets/generator_dialog.dart';
 
 class ItemDraft {
@@ -24,8 +25,9 @@ class ItemDraft {
 
 class ItemEditorDialog extends StatefulWidget {
   final DecryptedItem? initial;
+  final String? initialBundle;
 
-  const ItemEditorDialog({super.key, this.initial});
+  const ItemEditorDialog({super.key, this.initial, this.initialBundle});
 
   @override
   State<ItemEditorDialog> createState() => _ItemEditorDialogState();
@@ -37,6 +39,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
 
   // Category specific controllers
   final _vaultController = TextEditingController();
+  final _bundleController = TextEditingController();
 
   // Login
   final _usernameController = TextEditingController();
@@ -77,16 +80,20 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
   bool _obscurePin = true;
   bool _obscureSecretKey = true;
   String? _error;
+  List<String> _knownBundles = [];
 
   @override
   void initState() {
     super.initState();
     final initial = widget.initial;
     _title = TextEditingController(text: initial?.title ?? '');
-    _vaultController.text = (initial?.fields['vault'] ?? 'Primary Vault').toString();
-    _selectedType = initial == null
-        ? ItemType.login
-        : ItemTypeExt.fromString(initial.type);
+    _vaultController.text =
+        (initial?.fields['vault'] ?? 'Primary Vault').toString();
+    _bundleController.text =
+        (initial?.fields['bundle'] ?? widget.initialBundle ?? '').toString();
+    _selectedType =
+        initial == null ? ItemType.login : ItemTypeExt.fromString(initial.type);
+    _loadKnownBundles();
 
     if (initial != null) {
       final f = initial.fields;
@@ -99,7 +106,8 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
 
       // Card
       _cardholderController.text = (f['cardholder'] ?? '').toString();
-      _cardNumberController.text = (f['card_number'] ?? f['number'] ?? '').toString();
+      _cardNumberController.text =
+          (f['card_number'] ?? f['number'] ?? '').toString();
       _expiryController.text = (f['expiry'] ?? '').toString();
       _cvvController.text = (f['cvv'] ?? '').toString();
       _pinController.text = (f['pin'] ?? '').toString();
@@ -116,7 +124,8 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
 
       // Note
       _noteController.text =
-          (f['content'] ?? f['notes'] ?? f['note'] ?? f['body'] ?? '').toString();
+          (f['content'] ?? f['notes'] ?? f['note'] ?? f['body'] ?? '')
+              .toString();
 
       // Developer Secret
       _secretKeyController.text =
@@ -127,11 +136,39 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
 
       // Load remaining custom fields
       const standardKeys = {
-        'username', 'email', 'password', 'url', 'website', 'totp_secret',
-        'totpSecret', 'cardholder', 'card_number', 'number', 'expiry', 'cvv',
-        'pin', 'zip', 'full_name', 'id_number', 'passport', 'license', 'dob',
-        'address', 'phone', 'note', 'notes', 'content', 'body', 'secret_key',
-        'token', 'public_key', 'config', 'config_data', 'created_at',
+        'bundle',
+        'vault',
+        'username',
+        'email',
+        'password',
+        'url',
+        'website',
+        'totp_secret',
+        'totpSecret',
+        'cardholder',
+        'card_number',
+        'number',
+        'expiry',
+        'cvv',
+        'pin',
+        'zip',
+        'full_name',
+        'id_number',
+        'passport',
+        'license',
+        'dob',
+        'address',
+        'phone',
+        'note',
+        'notes',
+        'content',
+        'body',
+        'secret_key',
+        'token',
+        'public_key',
+        'config',
+        'config_data',
+        'created_at',
       };
       f.forEach((k, v) {
         if (!standardKeys.contains(k)) {
@@ -145,6 +182,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
   void dispose() {
     _title.dispose();
     _vaultController.dispose();
+    _bundleController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _urlController.dispose();
@@ -170,6 +208,23 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
       r.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _loadKnownBundles() async {
+    try {
+      final registered = await BundleService.getRegisteredBundles();
+      final set = <String>{};
+      for (final b in registered) {
+        final clean = b.trim();
+        if (clean.isNotEmpty) set.add(clean);
+      }
+      final current = _bundleController.text.trim();
+      if (current.isNotEmpty) set.add(current);
+      if (!mounted) return;
+      setState(() {
+        _knownBundles = set.toList()..sort();
+      });
+    } catch (_) {}
   }
 
   void _save() {
@@ -276,6 +331,11 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
     final vaultVal = _vaultController.text.trim();
     fields['vault'] = vaultVal.isEmpty ? 'Primary Vault' : vaultVal;
 
+    final bundleVal = _bundleController.text.trim();
+    if (bundleVal.isNotEmpty) {
+      fields['bundle'] = bundleVal;
+    }
+
     Navigator.of(context).pop(
       ItemDraft(
         title: _title.text.trim(),
@@ -350,6 +410,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Close',
                     icon: const HugeIcon(
                       icon: HugeIcons.strokeRoundedCancel01,
                       color: Colors.white60,
@@ -398,9 +459,8 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                                   fontWeight: selected
                                       ? FontWeight.bold
                                       : FontWeight.w500,
-                                  color: selected
-                                      ? Colors.white
-                                      : Colors.white60,
+                                  color:
+                                      selected ? Colors.white : Colors.white60,
                                 ),
                               ),
                             ],
@@ -436,6 +496,99 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                       label: 'Vault',
                       hint: 'Primary Vault, Work, Personal...',
                       prefixIcon: HugeIcons.strokeRoundedFolder01,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Bundle (Heterogeneous Group) Assignment
+                    _buildInputField(
+                      controller: _bundleController,
+                      label: 'Bundle (Group)',
+                      hint: 'e.g. Housework, Mom, Personal, Work',
+                      prefixIcon: HugeIcons.strokeRoundedFolder01,
+                      suffixButtons: [
+                        if (_knownBundles.isNotEmpty)
+                          PopupMenuButton<String>(
+                            tooltip: 'Choose bundle',
+                            icon: const HugeIcon(
+                              icon: HugeIcons.strokeRoundedArrowDown01,
+                              color: Colors.white60,
+                              size: 18,
+                            ),
+                            color: const Color(0xFF1A1D26),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(
+                                  color: Color(0xFF272C3A)),
+                            ),
+                            onSelected: (val) {
+                              setState(
+                                  () => _bundleController.text = val);
+                            },
+                            itemBuilder: (ctx) => [
+                              if (_bundleController.text
+                                  .trim()
+                                  .isNotEmpty)
+                                const PopupMenuItem<String>(
+                                  value: '',
+                                  height: 40,
+                                  child: Text(
+                                    'No bundle',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: Colors.white38,
+                                    ),
+                                  ),
+                                ),
+                              ..._knownBundles.map(
+                                (b) => PopupMenuItem<String>(
+                                  value: b,
+                                  height: 40,
+                                  child: Row(
+                                    children: [
+                                      HugeIcon(
+                                        icon: HugeIcons
+                                            .strokeRoundedFolder01,
+                                        size: 14,
+                                        color: _bundleController.text
+                                                    .trim()
+                                                    .toLowerCase() ==
+                                                b.toLowerCase()
+                                            ? AppColors.orangeAccent
+                                            : Colors.white38,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          b,
+                                          maxLines: 1,
+                                          overflow:
+                                              TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            color: _bundleController
+                                                        .text
+                                                        .trim()
+                                                        .toLowerCase() ==
+                                                    b.toLowerCase()
+                                                ? AppColors.orangeAccent
+                                                : Colors.white,
+                                            fontWeight: _bundleController
+                                                        .text
+                                                        .trim()
+                                                        .toLowerCase() ==
+                                                    b.toLowerCase()
+                                                ? FontWeight.w600
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 16),
 
@@ -504,6 +657,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                               ),
                             ),
                             IconButton(
+                              tooltip: 'Remove field',
                               icon: const HugeIcon(
                                 icon: HugeIcons.strokeRoundedDelete02,
                                 color: AppColors.roseAccent,
@@ -612,8 +766,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                     size: 18,
                   ),
                   onPressed: () {
-                    PasswordGeneratorDialog.show(context,
-                        onUsePassword: (pwd) {
+                    PasswordGeneratorDialog.show(context, onUsePassword: (pwd) {
                       setState(() {
                         _passwordController.text = pwd;
                         _obscurePassword = false;
@@ -775,7 +928,8 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
           decoration: InputDecoration(
             labelText: 'Secure Note Body',
             alignLabelWithHint: true,
-            hintText: 'Enter sensitive recovery keys, codes, or private notes...',
+            hintText:
+                'Enter sensitive recovery keys, codes, or private notes...',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(bottom: 110),
               child: HugeIcon(
@@ -821,8 +975,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                     size: 18,
                   ),
                   onPressed: () {
-                    PasswordGeneratorDialog.show(context,
-                        onUsePassword: (pwd) {
+                    PasswordGeneratorDialog.show(context, onUsePassword: (pwd) {
                       setState(() {
                         _secretKeyController.text = pwd;
                         _obscureSecretKey = false;

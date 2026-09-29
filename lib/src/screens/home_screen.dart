@@ -11,6 +11,7 @@ import 'package:otp/otp.dart';
 import 'package:firewood_core/firewood_core.dart';
 import 'package:firewood_design/firewood_design.dart';
 import 'package:firewood_ui_desktop/firewood_ui_desktop.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hugeicons/hugeicons.dart';
 
 import '../providers.dart';
@@ -21,6 +22,8 @@ import '../theme/app_icons.dart';
 import '../widgets/airshare_dialog.dart';
 import '../widgets/generator_dialog.dart';
 import '../widgets/security_advisor_dialog.dart';
+import '../widgets/bundle_settings_dialog.dart';
+import '../services/bundle_service.dart';
 import 'item_editor.dart';
 import 'package:window_manager/window_manager.dart';
 import 'settings_section.dart';
@@ -218,12 +221,12 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'FIREWOOD VAULT',
-                      style: TextStyle(
-                        fontSize: 18,
+                      style: GoogleFonts.syncopate(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
+                        letterSpacing: 1.5,
                         color: Colors.white,
                       ),
                     ),
@@ -256,8 +259,8 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                 const SizedBox(width: 12),
                 ElevatedButton.icon(
                   icon: const HugeIcon(
-                    icon: HugeIcons.strokeRoundedAdd01,
-                    size: 18,
+                    icon: HugeIcons.strokeRoundedPlusSignCircle,
+                    size: 20,
                     color: Colors.black,
                     strokeWidth: 2.2,
                   ),
@@ -266,7 +269,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                     backgroundColor: AppColors.orangeAccent,
                     foregroundColor: Colors.black,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
+                        horizontal: 24, vertical: 14),
                     textStyle: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   onPressed: _addNewItem,
@@ -358,14 +361,14 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
-                                letterSpacing: 1.1,
+                                letterSpacing: 1.2,
                                 color: Colors.white70,
                               ),
                             ),
                             const SizedBox(width: 10),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                                  horizontal: 10, vertical: 3),
                               decoration: BoxDecoration(
                                 color: (advisory.score >= 80
                                         ? AppColors.mintAccent
@@ -392,24 +395,50 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                                 ),
                               ),
                             ),
+                            if (advisory.score < 80 &&
+                                _items.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Tooltip(
+                                message: advisory.score >= 50
+                                    ? 'Vault health needs attention'
+                                    : 'Critical vault risks',
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: advisory.score >= 50
+                                        ? const Color(0xFFF59E0B)
+                                        : AppColors.roseAccent,
+                                    border: Border.all(
+                                      color:
+                                          Colors.white.withOpacity(0.35),
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Text(
                           advisory.headlineTip?.title ??
                               'All Credentials Meeting Zero-Knowledge Standards',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
+                            letterSpacing: -0.2,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
                           advisory.headlineTip?.message ??
                               'Deterministic on-device evaluation detected zero entropy vulnerabilities or password reuse across your vault.',
                           style: TextStyle(
                             fontSize: 13,
+                            height: 1.5,
                             color: Colors.white.withOpacity(0.6),
                           ),
                         ),
@@ -529,7 +558,8 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                           ItemTypeExt.fromString(i.type) == ItemType.login)
                       .length,
                   selected: _selectedCategory == ItemType.login,
-                  onTap: () => setState(() => _selectedCategory = ItemType.login),
+                  onTap: () =>
+                      setState(() => _selectedCategory = ItemType.login),
                 ),
                 const SizedBox(width: 10),
                 _buildCategoryPill(
@@ -540,7 +570,8 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                           ItemTypeExt.fromString(i.type) == ItemType.card)
                       .length,
                   selected: _selectedCategory == ItemType.card,
-                  onTap: () => setState(() => _selectedCategory = ItemType.card),
+                  onTap: () =>
+                      setState(() => _selectedCategory = ItemType.card),
                 ),
                 const SizedBox(width: 10),
                 _buildCategoryPill(
@@ -551,7 +582,8 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                           ItemTypeExt.fromString(i.type) == ItemType.identity)
                       .length,
                   selected: _selectedCategory == ItemType.identity,
-                  onTap: () => setState(() => _selectedCategory = ItemType.identity),
+                  onTap: () =>
+                      setState(() => _selectedCategory = ItemType.identity),
                 ),
                 const SizedBox(width: 10),
                 _buildCategoryPill(
@@ -562,7 +594,8 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                           ItemTypeExt.fromString(i.type) == ItemType.note)
                       .length,
                   selected: _selectedCategory == ItemType.note,
-                  onTap: () => setState(() => _selectedCategory = ItemType.note),
+                  onTap: () =>
+                      setState(() => _selectedCategory = ItemType.note),
                 ),
                 const SizedBox(width: 10),
                 _buildCategoryPill(
@@ -574,8 +607,8 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                           ItemType.developerSecret)
                       .length,
                   selected: _selectedCategory == ItemType.developerSecret,
-                  onTap: () =>
-                      setState(() => _selectedCategory = ItemType.developerSecret),
+                  onTap: () => setState(
+                      () => _selectedCategory = ItemType.developerSecret),
                 ),
               ],
             ),
@@ -590,9 +623,174 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                 return true;
               }).toList(),
             ),
+            const SizedBox(height: 24),
+            _buildBundleSection(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBundleSection() {
+    final bundleMap = <String, List<DecryptedItem>>{};
+    for (final item in _items) {
+      final name = (item.fields['bundle'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      bundleMap.putIfAbsent(name, () => []).add(item);
+    }
+    if (bundleMap.isEmpty) return const SizedBox.shrink();
+    final names = bundleMap.keys.toList()..sort();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'CREDENTIAL BUNDLES (${names.length})',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+            color: Colors.white.withOpacity(0.55),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ...names.map((name) {
+          final bundleItems = bundleMap[name]!;
+          final typeSet = bundleItems
+              .map((i) => ItemTypeExt.fromString(i.type).label)
+              .toSet()
+              .toList();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161921),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF262B36)),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  ref.read(desktopTabProvider.notifier).state = 1;
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color:
+                              AppColors.orangeAccent.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.orangeAccent
+                                .withOpacity(0.3),
+                          ),
+                        ),
+                        child: const Center(
+                          child: HugeIcon(
+                            icon: HugeIcons.strokeRoundedFolder01,
+                            size: 24,
+                            color: AppColors.orangeAccent,
+                            strokeWidth: 1.8,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14.5,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.orangeAccent
+                                        .withOpacity(0.15),
+                                    borderRadius:
+                                        BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: AppColors.orangeAccent
+                                          .withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${bundleItems.length}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          AppColors.orangeAccent,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              typeSet.isEmpty
+                                  ? 'Empty bundle'
+                                  : typeSet.join(' • '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color:
+                                    Colors.white.withOpacity(0.5),
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: const Color(0xFF2E3547)),
+                        ),
+                        child: const Center(
+                          child: HugeIcon(
+                            icon: HugeIcons
+                                .strokeRoundedArrowRight01,
+                            size: 14,
+                            color: Colors.white60,
+                            strokeWidth: 1.8,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 
@@ -660,9 +858,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
               : const Color(0xFF161921),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected
-                ? AppColors.orangeAccent
-                : const Color(0xFF262B36),
+            color: selected ? AppColors.orangeAccent : const Color(0xFF262B36),
           ),
         ),
         child: Row(
@@ -680,12 +876,10 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
             ),
             const SizedBox(width: 8),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
               decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.orangeAccent
-                    : const Color(0xFF242934),
+                color:
+                    selected ? AppColors.orangeAccent : const Color(0xFF242934),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -744,81 +938,307 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            mainAxisExtent: 110,
+            mainAxisExtent: 134,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
           ),
           itemCount: visibleItems.length,
           itemBuilder: (ctx, idx) {
             final item = visibleItems[idx];
-            final username = item.fields['username'] ??
-                item.fields['email'] ??
-                item.fields['cardholder'] ??
-                item.fields['number'] ??
-                '';
-
-            return InkWell(
+            return _dossierCredentialTile(
+              item: item,
+              typeIcon: _iconForType(item.type),
+              selected: false,
               onTap: () {
                 ref.read(selectedItemIdProvider.notifier).state = item.itemId;
                 ref.read(desktopTabProvider.notifier).state = 1;
               },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161921),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF262B36)),
-                ),
-                child: Row(
-                  children: [
-                    AppIcon(_iconForType(item.type), size: 44),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            item.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            username.isNotEmpty
-                                ? username.toString()
-                                : item.type.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withOpacity(0.5),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const HugeIcon(
-                      icon: HugeIcons.strokeRoundedArrowRight01,
-                      color: Colors.white30,
-                      size: 18,
-                      strokeWidth: 1.8,
-                    ),
-                  ],
-                ),
-              ),
             );
           },
         );
       },
     );
   }
+}
+
+// Shared dossier presentation helpers (UI-only; no behavior changes).
+
+Color _dossierAccentForType(ItemType type) {
+  switch (type) {
+    case ItemType.login:
+      return AppColors.orangeAccent;
+    case ItemType.card:
+      return AppColors.mintAccent;
+    case ItemType.identity:
+      return const Color(0xFFF59E0B);
+    case ItemType.note:
+      return Colors.white70;
+    case ItemType.developerSecret:
+      return AppColors.roseAccent;
+  }
+}
+
+dynamic _dossierUserIconForType(ItemType type) {
+  switch (type) {
+    case ItemType.card:
+      return HugeIcons.strokeRoundedCreditCard;
+    case ItemType.identity:
+      return HugeIcons.strokeRoundedId;
+    default:
+      return HugeIcons.strokeRoundedUser;
+  }
+}
+
+String _dossierUserLabelForType(ItemType type) {
+  switch (type) {
+    case ItemType.card:
+      return 'Card: ';
+    case ItemType.identity:
+      return 'ID: ';
+    default:
+      return 'User: ';
+  }
+}
+
+String _dossierSecretLabelForType(ItemType type) {
+  switch (type) {
+    case ItemType.card:
+      return 'CVV: ';
+    case ItemType.developerSecret:
+      return 'Secret: ';
+    default:
+      return 'Pass: ';
+  }
+}
+
+Widget _dossierCredentialTile({
+  required DecryptedItem item,
+  required String typeIcon,
+  required bool selected,
+  required VoidCallback onTap,
+  double titleSize = 14,
+}) {
+  final type = ItemTypeExt.fromString(item.type);
+  final accent = _dossierAccentForType(type);
+  final bundleName = (item.fields['bundle'] ?? '').toString().trim();
+  final hasTotp =
+      (item.fields['totp_secret'] ?? '').toString().trim().isNotEmpty;
+  final identifier = item.fields['username']?.toString() ??
+      item.fields['email']?.toString() ??
+      item.fields['cardholder']?.toString() ??
+      item.fields['key_name']?.toString() ??
+      item.fields['number']?.toString() ??
+      '';
+
+  return Container(
+    decoration: BoxDecoration(
+      color: selected
+          ? AppColors.orangeAccent.withOpacity(0.12)
+          : const Color(0xFF161921),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(
+        color: selected ? AppColors.orangeAccent : const Color(0xFF262B36),
+      ),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Title strip: type badge + title + mini-badges.
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1D26),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.white.withOpacity(0.06),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: accent.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: accent.withOpacity(0.35),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppIcon(typeIcon, size: 11),
+                          const SizedBox(width: 4),
+                          Text(
+                            type.label.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color: accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: titleSize,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (bundleName.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E222D),
+                          borderRadius: BorderRadius.circular(4),
+                          border:
+                              Border.all(color: const Color(0xFF2E3547)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const HugeIcon(
+                              icon: HugeIcons.strokeRoundedFolder01,
+                              size: 10,
+                              color: AppColors.orangeAccent,
+                              strokeWidth: 1.8,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              bundleName,
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white60,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (hasTotp) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: accent.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '2FA',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // Content section: identifier + masked secret rows.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (identifier.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 5),
+                        child: Row(
+                          children: [
+                            HugeIcon(
+                              icon: _dossierUserIconForType(type),
+                              size: 12,
+                              color: Colors.white60,
+                              strokeWidth: 1.8,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _dossierUserLabelForType(type),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                identifier,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Row(
+                      children: [
+                        AppIcon(AppIcons.lock, size: 12),
+                        const SizedBox(width: 5),
+                        Text(
+                          _dossierSecretLabelForType(type),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '••••••••',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.45),
+                              fontSize: 12,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 // ==========================================
@@ -834,7 +1254,9 @@ class _VaultWorkspace extends ConsumerStatefulWidget {
 
 class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
   List<DecryptedItem> _items = [];
+  List<String> _registeredBundles = [];
   ItemType? _filterType;
+  String? _filterBundle;
   bool _viewingTrash = false;
   String _query = '';
   final TextEditingController _searchController = TextEditingController();
@@ -859,9 +1281,11 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
     final items = _viewingTrash
         ? await itemService.getTrashItems(key)
         : await itemService.getAllItems(key);
+    final registered = await BundleService.getRegisteredBundles();
     if (mounted) {
       setState(() {
         _items = items;
+        _registeredBundles = registered;
         _loading = false;
       });
     }
@@ -872,7 +1296,7 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
     if (key == null) return;
     final payload = await showDialog<ItemDraft>(
       context: context,
-      builder: (_) => const ItemEditorDialog(),
+      builder: (_) => ItemEditorDialog(initialBundle: _filterBundle),
     );
     if (payload == null) return;
     await ref.read(itemServiceProvider).addItem(
@@ -892,25 +1316,35 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
       builder: (_) => ItemEditorDialog(initial: item),
     );
     if (payload == null) return;
+    final oldBundle = (item.fields['bundle'] ?? '').toString().trim();
+    final newBundle = (payload.fields['bundle'] ?? '').toString().trim();
+    if (newBundle.isNotEmpty) {
+      await BundleService.registerBundle(newBundle);
+    }
+
     await ref.read(itemServiceProvider).updateItem(
           key: key,
           itemId: item.itemId,
           newTitle: payload.title,
+          // V-009: type travels inside the encrypted payload — never back
+          // into the plaintext columns (core updateItem writes '' columns).
+          newType: payload.type,
           newFields: payload.fields,
         );
-    if (payload.type != item.type) {
-      final store = ref.read(secretStoreProvider);
-      final stored = await store.getItem(item.itemId);
-      if (stored != null) {
-        await store.putItem(StoredItem(
-          itemId: stored.itemId,
-          vaultId: stored.vaultId,
-          encryptedData: stored.encryptedData,
-          nonce: stored.nonce,
-          type: payload.type,
-          title: payload.title,
-          updatedAt: DateTime.now(),
-        ));
+
+    if (oldBundle.isNotEmpty &&
+        oldBundle.toLowerCase() != newBundle.toLowerCase()) {
+      final remaining = _items
+          .where((it) =>
+              it.itemId != item.itemId &&
+              (it.fields['bundle'] ?? '').toString().trim().toLowerCase() ==
+                  oldBundle.toLowerCase())
+          .length;
+      if (remaining == 0) {
+        await BundleService.deleteBundle(oldBundle);
+        if (_filterBundle?.toLowerCase() == oldBundle.toLowerCase()) {
+          _filterBundle = null;
+        }
       }
     }
     await _reload();
@@ -926,14 +1360,16 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF181B22),
           title: const Text('Delete Permanently?'),
-          content: Text('Permanently destroy "${item.title}"? This cannot be undone.'),
+          content: Text(
+              'Permanently destroy "${item.title}"? This cannot be undone.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.roseAccent),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.roseAccent),
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Delete Permanently'),
             ),
@@ -949,14 +1385,16 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF181B22),
           title: const Text('Move to Trash?'),
-          content: Text('Move "${item.title}" to the Trash? You can restore it anytime.'),
+          content: Text(
+              'Move "${item.title}" to the Trash? You can restore it anytime.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.roseAccent),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.roseAccent),
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Move to Trash'),
             ),
@@ -966,6 +1404,22 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
       if (confirm != true) return;
 
       await ref.read(itemServiceProvider).moveToTrash(key, item.itemId);
+    }
+
+    final oldBundle = (item.fields['bundle'] ?? '').toString().trim();
+    if (oldBundle.isNotEmpty) {
+      final remaining = _items
+          .where((it) =>
+              it.itemId != item.itemId &&
+              (it.fields['bundle'] ?? '').toString().trim().toLowerCase() ==
+                  oldBundle.toLowerCase())
+          .length;
+      if (remaining == 0) {
+        await BundleService.deleteBundle(oldBundle);
+        if (_filterBundle?.toLowerCase() == oldBundle.toLowerCase()) {
+          _filterBundle = null;
+        }
+      }
     }
 
     if (ref.read(selectedItemIdProvider) == item.itemId) {
@@ -1009,7 +1463,8 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.roseAccent),
+            style:
+                ElevatedButton.styleFrom(backgroundColor: AppColors.roseAccent),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Empty Trash Now'),
           ),
@@ -1031,7 +1486,8 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
     await _reload();
   }
 
-  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap, {bool isDanger = false}) {
+  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap,
+      {bool isDanger = false}) {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: InkWell(
@@ -1100,7 +1556,10 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
             SizedBox(width: 10),
             Text(
               'Create New Vault',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -1153,10 +1612,139 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
     if (name != null && name.isNotEmpty) {
       final currentList = ref.read(availableVaultsProvider);
       if (!currentList.contains(name)) {
-        ref.read(availableVaultsProvider.notifier).state = [...currentList, name];
+        ref.read(availableVaultsProvider.notifier).state = [
+          ...currentList,
+          name
+        ];
       }
       ref.read(activeVaultFilterProvider.notifier).state = name;
     }
+  }
+
+  Future<void> _createNewBundlePrompt() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161922),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: Color(0xFF2B3141)),
+        ),
+        title: const Row(
+          children: [
+            HugeIcon(
+              icon: HugeIcons.strokeRoundedFolder01,
+              color: AppColors.orangeAccent,
+              size: 20,
+              strokeWidth: 1.8,
+            ),
+            SizedBox(width: 10),
+            Text(
+              'New Credential Bundle',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Group related credentials across categories (e.g. Housework, Mom, Personal, Work).',
+                style: TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Bundle Name (e.g. Housework)',
+                  filled: true,
+                  fillColor: const Color(0xFF0F1117),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF262C3A)),
+                  ),
+                ),
+                onSubmitted: (v) => Navigator.pop(ctx, v),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.orangeAccent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Create Bundle'),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      await BundleService.registerBundle(name);
+      setState(() {
+        _filterBundle = name;
+      });
+      await _reload();
+      final key = ref.read(authProvider);
+      if (key == null || !mounted) return;
+      final payload = await showDialog<ItemDraft>(
+        context: context,
+        builder: (_) => ItemEditorDialog(initialBundle: name),
+      );
+      if (payload == null) return;
+      await ref.read(itemServiceProvider).addItem(
+            key: key,
+            type: payload.type,
+            title: payload.title,
+            fields: payload.fields,
+          );
+      await _reload();
+    }
+  }
+
+  void _openBundleSettingsDialog(String bundleName) {
+    final bundleItems = _items
+        .where((i) =>
+            (i.fields['bundle'] ?? '').toString().trim().toLowerCase() ==
+            bundleName.toLowerCase())
+        .toList();
+
+    BundleSettingsDialog.show(
+      context,
+      bundleName: bundleName,
+      items: bundleItems,
+      onRenamed: (newName) async {
+        setState(() {
+          _filterBundle = newName;
+        });
+        await _reload();
+      },
+      onEmptied: () async {
+        await _reload();
+      },
+      onDeleted: () async {
+        setState(() {
+          _filterBundle = null;
+        });
+        await _reload();
+      },
+    );
   }
 
   @override
@@ -1166,10 +1754,22 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
     final query = _query.trim().toLowerCase();
     final activeVault = ref.watch(activeVaultFilterProvider);
     final availableVaults = ref.watch(availableVaultsProvider);
+    final availableBundles = {
+      ..._registeredBundles,
+      ..._items
+          .map((i) => (i.fields['bundle'] ?? '').toString().trim())
+          .where((b) => b.isNotEmpty),
+    }.toList()
+      ..sort();
+
     final visible = _items.where((i) {
       if (activeVault != null) {
         final itemVault = (i.fields['vault'] ?? 'Primary Vault').toString();
         if (itemVault != activeVault) return false;
+      }
+      if (_filterBundle != null) {
+        final itemBundle = (i.fields['bundle'] ?? '').toString().trim();
+        if (itemBundle != _filterBundle) return false;
       }
       if (_filterType != null &&
           ItemTypeExt.fromString(i.type) != _filterType) {
@@ -1192,65 +1792,166 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
           ),
           child: Column(
             children: [
-              // Vault Selector Bar
+              // Vault & Bundle Selector Bar
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: const BoxDecoration(
                   color: Color(0xFF13151D),
                   border: Border(bottom: BorderSide(color: Color(0xFF222631))),
                 ),
                 child: Row(
                   children: [
-                    const HugeIcon(
-                      icon: HugeIcons.strokeRoundedFolder01,
-                      color: AppColors.orangeAccent,
-                      size: 16,
-                      strokeWidth: 1.8,
-                    ),
-                    const SizedBox(width: 8),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        value: activeVault,
-                        isDense: true,
-                        dropdownColor: const Color(0xFF181B24),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        icon: const HugeIcon(
-                          icon: HugeIcons.strokeRoundedArrowDown01,
-                          size: 14,
-                          color: Colors.white70,
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('All Vaults'),
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const HugeIcon(
+                            icon: HugeIcons.strokeRoundedFolder01,
+                            color: AppColors.orangeAccent,
+                            size: 15,
+                            strokeWidth: 1.8,
                           ),
-                          ...availableVaults.map(
-                            (v) => DropdownMenuItem<String?>(
-                              value: v,
-                              child: Text(v),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                value: activeVault,
+                                isDense: true,
+                                isExpanded: true,
+                                dropdownColor: const Color(0xFF181B24),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                icon: const HugeIcon(
+                                  icon: HugeIcons.strokeRoundedArrowDown01,
+                                  size: 13,
+                                  color: Colors.white70,
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('All Vaults',
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  ...availableVaults.map(
+                                    (v) => DropdownMenuItem<String?>(
+                                      value: v,
+                                      child: Text(v,
+                                          overflow: TextOverflow.ellipsis),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (val) {
+                                  ref
+                                      .read(activeVaultFilterProvider.notifier)
+                                      .state = val;
+                                },
+                              ),
                             ),
                           ),
                         ],
-                        onChanged: (val) {
-                          ref.read(activeVaultFilterProvider.notifier).state = val;
-                        },
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const HugeIcon(
+                            icon: HugeIcons.strokeRoundedLayers01,
+                            color: AppColors.orangeAccent,
+                            size: 15,
+                            strokeWidth: 1.8,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String?>(
+                                value: _filterBundle,
+                                isDense: true,
+                                isExpanded: true,
+                                dropdownColor: const Color(0xFF181B24),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                icon: const HugeIcon(
+                                  icon: HugeIcons.strokeRoundedArrowDown01,
+                                  size: 13,
+                                  color: Colors.white70,
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String?>(
+                                    value: null,
+                                    child: Text('All Bundles',
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  ...availableBundles.map(
+                                    (b) => DropdownMenuItem<String?>(
+                                      value: b,
+                                      child: Text(b,
+                                          overflow: TextOverflow.ellipsis),
+                                    ),
+                                  ),
+                                ],
+                                onChanged: (val) {
+                                  setState(() {
+                                    _filterBundle = val;
+                                  });
+                                },
+                              ),
+                            ),
+                          ),
+                          if (_filterBundle != null) ...[
+                            const SizedBox(width: 2),
+                            IconButton(
+                              icon: const HugeIcon(
+                                icon: HugeIcons.strokeRoundedSettings01,
+                                size: 15,
+                                color: AppColors.orangeAccent,
+                                strokeWidth: 1.8,
+                              ),
+                              tooltip: 'Bundle Settings: $_filterBundle',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                  minWidth: 20, minHeight: 20),
+                              onPressed: () =>
+                                  _openBundleSettingsDialog(_filterBundle!),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const HugeIcon(
+                        icon: HugeIcons.strokeRoundedFolderAdd,
+                        size: 15,
+                        color: Colors.white60,
+                        strokeWidth: 1.8,
+                      ),
+                      tooltip: 'New Bundle',
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 22, minHeight: 22),
+                      onPressed: _createNewBundlePrompt,
+                    ),
+                    const SizedBox(width: 2),
                     IconButton(
                       icon: const HugeIcon(
                         icon: HugeIcons.strokeRoundedAdd01,
-                        size: 16,
+                        size: 15,
                         color: Colors.white60,
                         strokeWidth: 1.8,
                       ),
                       tooltip: 'New Vault',
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      constraints:
+                          const BoxConstraints(minWidth: 22, minHeight: 22),
                       onPressed: _createNewVaultPrompt,
                     ),
                   ],
@@ -1301,7 +2002,7 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                         icon: const HugeIcon(
                           icon: HugeIcons.strokeRoundedAddCircle,
                           color: AppColors.orangeAccent,
-                          size: 24,
+                          size: 26,
                           strokeWidth: 1.8,
                         ),
                         onPressed: _addItem,
@@ -1313,14 +2014,16 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
               // Filter Category Chips
               Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: const BoxDecoration(
                   border: Border(bottom: BorderSide(color: Color(0xFF222631))),
                 ),
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
-                    _buildFilterChip('All', !_viewingTrash && _filterType == null, () {
+                    _buildFilterChip(
+                        'All', !_viewingTrash && _filterType == null, () {
                       setState(() {
                         _viewingTrash = false;
                         _filterType = null;
@@ -1328,7 +2031,8 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                       });
                       _reload();
                     }),
-                    _buildFilterChip('Logins', !_viewingTrash && _filterType == ItemType.login, () {
+                    _buildFilterChip('Logins',
+                        !_viewingTrash && _filterType == ItemType.login, () {
                       setState(() {
                         _viewingTrash = false;
                         _filterType = ItemType.login;
@@ -1336,7 +2040,9 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                       });
                       _reload();
                     }),
-                    _buildFilterChip('Cards', !_viewingTrash && _filterType == ItemType.card, () {
+                    _buildFilterChip(
+                        'Cards', !_viewingTrash && _filterType == ItemType.card,
+                        () {
                       setState(() {
                         _viewingTrash = false;
                         _filterType = ItemType.card;
@@ -1344,7 +2050,9 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                       });
                       _reload();
                     }),
-                    _buildFilterChip('Notes', !_viewingTrash && _filterType == ItemType.note, () {
+                    _buildFilterChip(
+                        'Notes', !_viewingTrash && _filterType == ItemType.note,
+                        () {
                       setState(() {
                         _viewingTrash = false;
                         _filterType = ItemType.note;
@@ -1352,7 +2060,8 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                       });
                       _reload();
                     }),
-                    _buildFilterChip('IDs', !_viewingTrash && _filterType == ItemType.identity, () {
+                    _buildFilterChip('IDs',
+                        !_viewingTrash && _filterType == ItemType.identity, () {
                       setState(() {
                         _viewingTrash = false;
                         _filterType = ItemType.identity;
@@ -1375,7 +2084,8 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
               // Trash Action Header if in Trash view
               if (_viewingTrash)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   color: AppColors.roseAccent.withOpacity(0.08),
                   child: Row(
                     children: [
@@ -1398,7 +2108,8 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                           ),
                           label: const Text(
                             'Empty Trash',
-                            style: TextStyle(color: AppColors.roseAccent, fontSize: 12),
+                            style: TextStyle(
+                                color: AppColors.roseAccent, fontSize: 12),
                           ),
                           onPressed: _emptyTrash,
                         ),
@@ -1415,7 +2126,9 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                     : (visible.isEmpty
                         ? Center(
                             child: Text(
-                              _viewingTrash ? 'Trash is empty' : 'No credentials found',
+                              _viewingTrash
+                                  ? 'Trash is empty'
+                                  : 'No credentials found',
                               style: TextStyle(
                                   color: Colors.white.withOpacity(0.5)),
                             ),
@@ -1425,40 +2138,21 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                             itemBuilder: (ctx, idx) {
                               final item = visible[idx];
                               final isSelected = item.itemId == selectedId;
-                              final sub = item.fields['username'] ??
-                                  item.fields['email'] ??
-                                  item.fields['cardholder'] ??
-                                  '';
 
-                              return ListTile(
-                                selected: isSelected,
-                                selectedTileColor:
-                                    AppColors.orangeAccent.withOpacity(0.12),
-                                leading:
-                                    AppIcon(_iconForType(item.type), size: 36),
-                                title: Text(
-                                  item.title,
-                                  style: TextStyle(
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 4),
+                                child: _dossierCredentialTile(
+                                  item: item,
+                                  typeIcon: _iconForType(item.type),
+                                  selected: isSelected,
+                                  titleSize: 13,
+                                  onTap: () {
+                                    ref
+                                        .read(selectedItemIdProvider.notifier)
+                                        .state = item.itemId;
+                                  },
                                 ),
-                                subtitle: Text(
-                                  sub.isNotEmpty
-                                      ? sub.toString()
-                                      : item.type.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withOpacity(0.5),
-                                  ),
-                                ),
-                                onTap: () {
-                                  ref
-                                      .read(selectedItemIdProvider.notifier)
-                                      .state = item.itemId;
-                                },
                               );
                             },
                           )),
@@ -1477,7 +2171,9 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                       const AppIcon(AppIcons.vault, size: 64),
                       const SizedBox(height: 16),
                       Text(
-                        _viewingTrash ? 'Select a deleted item to inspect or restore' : 'Select a credential to inspect',
+                        _viewingTrash
+                            ? 'Select a deleted item to inspect or restore'
+                            : 'Select a credential to inspect',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -1486,7 +2182,9 @@ class _VaultWorkspaceState extends ConsumerState<_VaultWorkspace> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        _viewingTrash ? 'Items in trash can be restored or deleted permanently.' : 'Or press "+ New Item" to create a new record.',
+                        _viewingTrash
+                            ? 'Items in trash can be restored or deleted permanently.'
+                            : 'Or press "+ New Item" to create a new record.',
                         style: TextStyle(color: Colors.white.withOpacity(0.4)),
                       ),
                     ],
@@ -1522,7 +2220,8 @@ class _CredentialDetailPane extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_CredentialDetailPane> createState() => _CredentialDetailPaneState();
+  ConsumerState<_CredentialDetailPane> createState() =>
+      _CredentialDetailPaneState();
 }
 
 class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
@@ -1782,8 +2481,10 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final password = item.fields['password']?.toString() ?? '';
-    final username = (item.fields['username'] ?? item.fields['email'])?.toString() ?? '';
-    final url = (item.fields['url'] ?? item.fields['website'])?.toString() ?? '';
+    final username =
+        (item.fields['username'] ?? item.fields['email'])?.toString() ?? '';
+    final url =
+        (item.fields['url'] ?? item.fields['website'])?.toString() ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFF0C0E12),
@@ -1820,11 +2521,13 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
                           ),
                           const SizedBox(width: 10),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1B1E29),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFF2C3345)),
+                              border:
+                                  Border.all(color: const Color(0xFF2C3345)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1837,7 +2540,8 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  (item.fields['vault'] ?? 'Primary Vault').toString(),
+                                  (item.fields['vault'] ?? 'Primary Vault')
+                                      .toString(),
                                   style: const TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
@@ -1847,6 +2551,43 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
                               ],
                             ),
                           ),
+                          if ((item.fields['bundle'] ?? '')
+                              .toString()
+                              .trim()
+                              .isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1B1E29),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                    color: AppColors.orangeAccent
+                                        .withOpacity(0.4)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const HugeIcon(
+                                    icon: HugeIcons.strokeRoundedLayers01,
+                                    size: 11,
+                                    color: AppColors.orangeAccent,
+                                    strokeWidth: 1.8,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Bundle: ${item.fields['bundle']}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.orangeAccent,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],
@@ -1960,11 +2701,13 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
             if (item.isDeleted) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 24),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: AppColors.roseAccent.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.roseAccent.withOpacity(0.3)),
+                  border:
+                      Border.all(color: AppColors.roseAccent.withOpacity(0.3)),
                 ),
                 child: Row(
                   children: [
@@ -1978,7 +2721,8 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
                     Expanded(
                       child: Text(
                         'This item is in the Trash${item.deletedAt != null ? ' (deleted ${DateFormat.yMMMd().add_jm().format(item.deletedAt!)})' : ''}. You can restore it or permanently delete it.',
-                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
                       ),
                     ),
                   ],
@@ -2008,14 +2752,16 @@ class _CredentialDetailPaneState extends ConsumerState<_CredentialDetailPane> {
                 onCopy: () => _copy(password, 'Password'),
                 trailingAction: item.passwordHistory.isNotEmpty
                     ? IconButton(
-                        tooltip: 'Password History (${item.passwordHistory.length})',
+                        tooltip:
+                            'Password History (${item.passwordHistory.length})',
                         icon: const HugeIcon(
                           icon: HugeIcons.strokeRoundedClock01,
                           color: AppColors.orangeAccent,
                           size: 20,
                           strokeWidth: 1.8,
                         ),
-                        onPressed: () => _showPasswordHistoryDialog(context, item),
+                        onPressed: () =>
+                            _showPasswordHistoryDialog(context, item),
                       )
                     : null,
               ),

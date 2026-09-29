@@ -30,7 +30,7 @@ class SecurityAdvisorDialog extends StatelessWidget {
       builder: (ctx) => Dialog(
         backgroundColor: Colors.transparent,
         child: Container(
-          width: 720,
+          width: 600,
           height: 600,
           decoration: BoxDecoration(
             color: const Color(0xFF13151A),
@@ -48,6 +48,13 @@ class SecurityAdvisorDialog extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _totpCoverage(VaultAdvisory a) {
+    if (a.totalLogins <= 0) return '100%';
+    final covered =
+        ((a.totalLogins - a.missing2FACount) / a.totalLogins * 100).round();
+    return '$covered%';
   }
 
   Color _severityColor(SecuritySeverity s) => switch (s) {
@@ -68,25 +75,25 @@ class SecurityAdvisorDialog extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const AppIcon(AppIcons.shieldCheck, size: 36),
-              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'AI SECURITY ADVISOR',
+                      'Security advisor',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
                         color: Colors.white,
                       ),
                     ),
                     Text(
-                      'Zero-Knowledge On-Device ML Analysis (${advisory.totalItems} credentials evaluated)',
+                      'On-device vault health review · ${advisory.totalItems} credentials evaluated',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         color: Colors.white.withOpacity(0.5),
                       ),
                     ),
@@ -94,7 +101,8 @@ class SecurityAdvisorDialog extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: advisory.score >= 80
                       ? AppColors.mintAccent.withOpacity(0.12)
@@ -126,6 +134,7 @@ class SecurityAdvisorDialog extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               IconButton(
+                tooltip: 'Close',
                 icon: const HugeIcon(
                   icon: HugeIcons.strokeRoundedCancel01,
                   color: Colors.white60,
@@ -133,6 +142,42 @@ class SecurityAdvisorDialog extends StatelessWidget {
                   strokeWidth: 1.8,
                 ),
                 onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+
+        // Stat cards: Strong / Weak / Reused / 2FA.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          child: Row(
+            children: [
+              _AdvisorStatCard(
+                label: 'Strong',
+                value: '${advisory.strongCount}',
+                color: AppColors.mintAccent,
+              ),
+              const SizedBox(width: 8),
+              _AdvisorStatCard(
+                label: 'Weak',
+                value: '${advisory.weakCount}',
+                color: advisory.weakCount > 0
+                    ? AppColors.roseAccent
+                    : Colors.white38,
+              ),
+              const SizedBox(width: 8),
+              _AdvisorStatCard(
+                label: 'Reused',
+                value: '${advisory.reusedCount}',
+                color: advisory.reusedCount > 0
+                    ? const Color(0xFFF59E0B)
+                    : Colors.white38,
+              ),
+              const SizedBox(width: 8),
+              _AdvisorStatCard(
+                label: '2FA',
+                value: _totpCoverage(advisory),
+                color: AppColors.orangeAccent,
               ),
             ],
           ),
@@ -181,47 +226,39 @@ class SecurityAdvisorDialog extends StatelessWidget {
                         initiallyExpanded: true,
                         shape: const Border(),
                         leading: Container(
-                          width: 8,
-                          height: 36,
+                          width: 7,
+                          height: 7,
                           decoration: BoxDecoration(
+                            shape: BoxShape.circle,
                             color: color,
-                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                        title: Row(
-                          children: [
-                            Text(
-                              group.headline,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                group.severity.name.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: color,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        subtitle: Text(
-                          group.advice,
-                          style: TextStyle(
+                        title: Text(
+                          group.headline,
+                          style: const TextStyle(
                             fontSize: 12,
-                            color: Colors.white.withOpacity(0.5),
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.4,
+                            color: Color(0xFFF4F4F5),
+                          ),
+                        ),
+                        subtitle: Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF13151A),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: const Color(0xFF262A33)),
+                          ),
+                          child: Text(
+                            group.advice,
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.4,
+                              color: Colors.white.withOpacity(0.5),
+                            ),
                           ),
                         ),
                         children: group.issues.map((issue) {
@@ -229,7 +266,8 @@ class SecurityAdvisorDialog extends StatelessWidget {
                             dense: true,
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 24, vertical: 4),
-                            leading: const AppIcon(AppIcons.categoryLogin, size: 24),
+                            leading:
+                                const AppIcon(AppIcons.categoryLogin, size: 24),
                             title: Text(
                               issue.item.title,
                               style: const TextStyle(
@@ -252,7 +290,8 @@ class SecurityAdvisorDialog extends StatelessWidget {
                                 color: AppColors.orangeAccent,
                                 strokeWidth: 1.8,
                               ),
-                              label: const Text('Resolve', style: TextStyle(fontSize: 12)),
+                              label: const Text('Resolve',
+                                  style: TextStyle(fontSize: 12)),
                               style: TextButton.styleFrom(
                                 foregroundColor: AppColors.orangeAccent,
                               ),
@@ -266,6 +305,54 @@ class SecurityAdvisorDialog extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _AdvisorStatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _AdvisorStatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF181B22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF262A33)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

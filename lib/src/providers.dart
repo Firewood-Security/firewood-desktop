@@ -51,16 +51,20 @@ final autoLockMinutesProvider = StateProvider<int>((ref) => 5);
 final clipboardClearProvider = StateProvider<bool>((ref) => true);
 
 /// App accent colour (desktop).
-final accentColorProvider = StateProvider<Color>((ref) => AppColors.orangeAccent);
+final accentColorProvider =
+    StateProvider<Color>((ref) => AppColors.orangeAccent);
 
 /// Burner / duress passwords.
 final burnerServiceProvider = Provider<BurnerService>(
-  (ref) => BurnerService(ref.watch(secretStoreProvider), ref.watch(vaultServiceProvider)),
+  (ref) => BurnerService(
+      ref.watch(secretStoreProvider), ref.watch(vaultServiceProvider)),
 );
 
 /// Bluetooth & AirShare sharing (Spark QR & Flame Code modes).
-final airShareServiceProvider = Provider<AirShareService>((ref) => AirShareService());
-final sharingServiceProvider = Provider<SharingService>((ref) => SharingService());
+final airShareServiceProvider =
+    Provider<AirShareService>((ref) => AirShareService());
+final sharingServiceProvider =
+    Provider<SharingService>((ref) => SharingService());
 final bluetoothTransportProvider =
     Provider<ShareTransport>((ref) => BleShareTransport());
 final bluetoothEnabledProvider = StateProvider<bool>((ref) => false);
@@ -90,4 +94,3 @@ final activeVaultFilterProvider = StateProvider<String?>((ref) => null);
 final availableVaultsProvider = StateProvider<List<String>>(
   (ref) => const ['Primary Vault', 'Work', 'Finance', 'Personal'],
 );
-

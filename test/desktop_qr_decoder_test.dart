@@ -6,7 +6,8 @@ import 'package:firewood_desktop/src/services/desktop_qr_decoder.dart';
 
 void main() {
   test('DesktopQrDecoder decodes generated QR code image', () {
-    const testUri = 'firewood://spark?pk=testkey12345&nonce=abcd1234efgh&name=DesktopPeer';
+    const testUri =
+        'firewood://spark?pk=testkey12345&nonce=abcd1234efgh&name=DesktopPeer';
 
     // Generate QR Code matrix using qr package
     final qrCode = QrCode.fromData(

@@ -5,7 +5,8 @@ import 'package:firewood_core/firewood_core.dart';
 import 'package:firewood_desktop/src/widgets/airshare_dialog.dart';
 
 void main() {
-  testWidgets('AirShareDialog renders Spark QR and switches to 4-Digit Flame Code', (tester) async {
+  testWidgets('AirShareDialog renders local QR send and switches to receive',
+      (tester) async {
     final testItem = DecryptedItem(
       itemId: 'item-demo-1',
       type: 'login',
@@ -40,24 +41,17 @@ void main() {
     await tester.tap(find.text('Open AirShare'));
     await tester.pumpAndSettle();
 
-    // Verify dialog header
-    expect(find.text('Firewood AirShare'), findsOneWidget);
-    expect(find.text('Spark Mode'), findsOneWidget);
-    expect(find.text('Flame Code'), findsOneWidget);
+    // Verify dialog header and local QR badge
+    expect(find.text('AirShare'), findsOneWidget);
+    expect(find.text('Local QR P2P'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
+    expect(find.text('Receive'), findsOneWidget);
 
-    // Switch to Flame Code mode
-    await tester.tap(find.text('Flame Code'));
-    await tester.pumpAndSettle();
-
-    // Verify 4-digit Flame Code section
-    expect(find.text('Verify 4-Digit Flame Code'), findsOneWidget);
-    expect(find.text('I confirm the 4-digit Flame Code matches the receiver.'), findsOneWidget);
-
-    // Switch to Receive transfer
+    // Switch to Receive transfer (using pump since QR display has continuous animation)
     await tester.tap(find.text('Receive'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Incoming Connection Flame Code'), findsOneWidget);
-    expect(find.text('Accept & Decrypt'), findsOneWidget);
+    expect(
+        find.text('Display this QR code to the sender device'), findsOneWidget);
   });
 }

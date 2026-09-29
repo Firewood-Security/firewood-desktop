@@ -4,6 +4,10 @@ analyzer:
   exclude:
     - "**/*.g.dart"
     - "lib/src/data/schemas.g.dart"
+    - build/**
+    - windows/**
+    - macos/**
+    - linux/**
   errors:
     deprecated_member_use: ignore
     library_annotations: ignore

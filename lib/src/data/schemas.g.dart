@@ -3504,6 +3504,11 @@ const BurnerRecordSchema = CollectionSchema(
       id: 2,
       name: r'passwordHash',
       type: IsarType.string,
+    ),
+    r'salt': PropertySchema(
+      id: 3,
+      name: r'salt',
+      type: IsarType.longList,
     )
   },
   estimateSize: _burnerRecordEstimateSize,
@@ -3528,6 +3533,12 @@ int _burnerRecordEstimateSize(
   var bytesCount = offsets.last;
   bytesCount += 3 + object.label.length * 3;
   bytesCount += 3 + object.passwordHash.length * 3;
+  {
+    final value = object.salt;
+    if (value != null) {
+      bytesCount += 3 + value.length * 8;
+    }
+  }
   return bytesCount;
 }
 
@@ -3540,6 +3551,7 @@ void _burnerRecordSerialize(
   writer.writeDateTime(offsets[0], object.createdAt);
   writer.writeString(offsets[1], object.label);
   writer.writeString(offsets[2], object.passwordHash);
+  writer.writeLongList(offsets[3], object.salt);
 }
 
 BurnerRecord _burnerRecordDeserialize(
@@ -3553,6 +3565,7 @@ BurnerRecord _burnerRecordDeserialize(
   object.id = id;
   object.label = reader.readString(offsets[1]);
   object.passwordHash = reader.readString(offsets[2]);
+  object.salt = reader.readLongList(offsets[3]);
   return object;
 }
 
@@ -3569,6 +3582,8 @@ P _burnerRecordDeserializeProp<P>(
       return (reader.readString(offset)) as P;
     case 2:
       return (reader.readString(offset)) as P;
+    case 3:
+      return (reader.readLongList(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -4046,6 +4061,168 @@ extension BurnerRecordQueryFilter
       ));
     });
   }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition> saltIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'salt',
+      ));
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'salt',
+      ));
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltElementEqualTo(int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'salt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltElementGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'salt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltElementLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'salt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltElementBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'salt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltLengthEqualTo(int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'salt',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'salt',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'salt',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'salt',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'salt',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QAfterFilterCondition>
+      saltLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'salt',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
+    });
+  }
 }
 
 extension BurnerRecordQueryObject
@@ -4167,6 +4344,12 @@ extension BurnerRecordQueryWhereDistinct
       return query.addDistinctBy(r'passwordHash', caseSensitive: caseSensitive);
     });
   }
+
+  QueryBuilder<BurnerRecord, BurnerRecord, QDistinct> distinctBySalt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'salt');
+    });
+  }
 }
 
 extension BurnerRecordQueryProperty
@@ -4192,6 +4375,12 @@ extension BurnerRecordQueryProperty
   QueryBuilder<BurnerRecord, String, QQueryOperations> passwordHashProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'passwordHash');
+    });
+  }
+
+  QueryBuilder<BurnerRecord, List<int>?, QQueryOperations> saltProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'salt');
     });
   }
 }

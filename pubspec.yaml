@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  google_fonts: ^8.2.1
   cupertino_icons: ^1.0.8
 
   # Shared, device-agnostic framework + design system
@@ -57,6 +58,10 @@ dev_dependencies:
   isar_generator: ^3.1.0+1
   build_runner: ^2.4.8
   qr: ^3.0.2
+  # Test-only: path-provider mock for the IsarSecretStore fixture tests
+  # (V-027) — same set firewood-mobile declares for its Isar tests.
+  path_provider_platform_interface: ^2.1.2
+  plugin_platform_interface: ^2.1.8
 
 flutter:
   uses-material-design: true

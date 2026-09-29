@@ -33,16 +33,18 @@ class FirewoodButton extends StatelessWidget {
     Gradient? gradient;
     late Color borderColor;
     late Color textColor;
+    late Color lipColor;
 
     switch (variant) {
       case FirewoodButtonVariant.primary:
-        gradient = const LinearGradient(
+        gradient = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [AppColors.emberBright, AppColors.emberDeep],
+          colors: [AppColors.orangeAccent, AppColors.shade(AppColors.orangeAccent, -0.08)],
         );
-        borderColor = AppColors.ember;
+        borderColor = AppColors.orangeDark;
         textColor = Colors.white;
+        lipColor = AppColors.shade(AppColors.orangeAccent, -0.18);
         break;
       case FirewoodButtonVariant.secondary:
         gradient = const LinearGradient(
@@ -52,6 +54,7 @@ class FirewoodButton extends StatelessWidget {
         );
         borderColor = AppColors.hearthEdge;
         textColor = AppColors.ash;
+        lipColor = const Color(0xFF27272A);
         break;
       case FirewoodButtonVariant.danger:
         gradient = const LinearGradient(
@@ -59,8 +62,9 @@ class FirewoodButton extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
         );
-        borderColor = AppColors.roseAccent;
+        borderColor = const Color(0xFFB91C1C);
         textColor = Colors.white;
+        lipColor = const Color(0xFF7F1D1D);
         break;
       case FirewoodButtonVariant.success:
         gradient = const LinearGradient(
@@ -68,25 +72,28 @@ class FirewoodButton extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [AppColors.mintAccent, Color(0xFF15803D)],
         );
-        borderColor = AppColors.mintAccent;
+        borderColor = const Color(0xFF15803D);
         textColor = Colors.white;
+        lipColor = const Color(0xFF14532D);
         break;
       case FirewoodButtonVariant.soft:
         gradient = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.ember.withValues(alpha: 0.25),
-            AppColors.ember.withValues(alpha: 0.12),
+            AppColors.orangeAccent.withValues(alpha: 0.25),
+            AppColors.orangeAccent.withValues(alpha: 0.12),
           ],
         );
-        borderColor = AppColors.ember.withValues(alpha: 0.4);
+        borderColor = AppColors.orangeAccent.withValues(alpha: 0.4);
         textColor = AppColors.ash;
+        lipColor = AppColors.orangeDark;
         break;
       case FirewoodButtonVariant.outline:
         gradient = null;
         borderColor = AppColors.hearthEdge;
         textColor = AppColors.ash;
+        lipColor = const Color(0xFF27272A);
         break;
     }
 
@@ -141,10 +148,11 @@ class FirewoodButton extends StatelessWidget {
           boxShadow: isDisabled
               ? null
               : [
-                  const BoxShadow(
-                    color: Colors.black45,
-                    offset: Offset(0, 2),
-                    blurRadius: 4,
+                  BoxShadow(
+                    color: lipColor,
+                    offset: const Offset(0, 3),
+                    blurRadius: 0,
+                    spreadRadius: 0,
                   ),
                 ],
         ),
