@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print, non_constant_identifier_names
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:firewood_desktop/src/services/airshare_service.dart';
