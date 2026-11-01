@@ -517,17 +517,13 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                             color: const Color(0xFF1A1D26),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(
-                                  color: Color(0xFF272C3A)),
+                              side: const BorderSide(color: Color(0xFF272C3A)),
                             ),
                             onSelected: (val) {
-                              setState(
-                                  () => _bundleController.text = val);
+                              setState(() => _bundleController.text = val);
                             },
                             itemBuilder: (ctx) => [
-                              if (_bundleController.text
-                                  .trim()
-                                  .isNotEmpty)
+                              if (_bundleController.text.trim().isNotEmpty)
                                 const PopupMenuItem<String>(
                                   value: '',
                                   height: 40,
@@ -546,8 +542,7 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                                   child: Row(
                                     children: [
                                       HugeIcon(
-                                        icon: HugeIcons
-                                            .strokeRoundedFolder01,
+                                        icon: HugeIcons.strokeRoundedFolder01,
                                         size: 14,
                                         color: _bundleController.text
                                                     .trim()
@@ -561,19 +556,16 @@ class _ItemEditorDialogState extends State<ItemEditorDialog> {
                                         child: Text(
                                           b,
                                           maxLines: 1,
-                                          overflow:
-                                              TextOverflow.ellipsis,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontSize: 12.5,
-                                            color: _bundleController
-                                                        .text
+                                            color: _bundleController.text
                                                         .trim()
                                                         .toLowerCase() ==
                                                     b.toLowerCase()
                                                 ? AppColors.orangeAccent
                                                 : Colors.white,
-                                            fontWeight: _bundleController
-                                                        .text
+                                            fontWeight: _bundleController.text
                                                         .trim()
                                                         .toLowerCase() ==
                                                     b.toLowerCase()

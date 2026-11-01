@@ -1,156 +1,174 @@
-# firewood-desktop
+<div align="center">
 
-Flutter desktop password manager for **Linux**, **Windows**, and **macOS** —
-the same offline-first, zero-knowledge vault model as the mobile product,
-packaged in a native desktop shell with a dedicated design system.
+# Firewood Desktop
+
+**Offline-first, zero-knowledge password manager for Linux, Windows, and macOS.**  
+Native Flutter desktop shell. No cloud accounts. No remote servers. No telemetry.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-2ea44f.svg)](#supported-platforms)
+[![Framework](https://img.shields.io/badge/Framework-Flutter%20Desktop-02569B.svg)](https://flutter.dev)
+[![Crypto](https://img.shields.io/badge/Crypto-Argon2id%20%2B%20XChaCha20--Poly1305-orange.svg)](#security-and-crypto-architecture)
+[![Download](https://img.shields.io/badge/Download-Release%20Binaries-brightgreen.svg)](https://firewoodsec.yahyaoncloud.com/download/)
+
+</div>
 
 ---
 
-## Repository layout
+## Overview
+
+**Firewood Desktop** brings the same zero-knowledge, local-first security model of the Firewood vault to desktop operating systems. Packaged in a native desktop shell with a custom frameless window title bar and an accessible sidebar navigation rail, Firewood Desktop ensures your credentials never leave your physical workstation.
+
+Your master password is never stored on disk. All credential fields are individually encrypted in RAM using **Argon2id** key derivation and **XChaCha20-Poly1305** AEAD before touching the local database.
+
+---
+
+## Key Features
+
+- **Local Zero-Knowledge Storage**: Argon2id master key derivation (64 MiB RAM, 3 passes, 4 lanes). Field-level XChaCha20-Poly1305 encryption with fresh 24-byte CSPRNG nonces.
+- **Native Frameless Desktop Shell**: Custom draggable title bar, window minimizing/maximizing/closing controls, and system tray integration via `window_manager`.
+- **Collapsible Navigation Rail**: Fast keyboard-navigable switching between Logins, Payment Cards, Identities, Secure Notes, and API Keys.
+- **P2P AirShare Sync**: Peer-to-peer encrypted vault payload transfer over Bluetooth Low Energy (BLE) without intermediate cloud brokers.
+- **Password & Passphrase Generator**: Generate high-entropy randomized passwords, EFF diceware phrases, and PINs with visual strength analysis.
+- **Encrypted Backups**: Export and import self-contained encrypted `.firewood` backups protected by an independent backup password.
+- **Clipboard Safety**: Automatically cleanses copied credentials from the clipboard buffer after a short timeout.
+- **In-App Updater**: Cryptographically verified HTTPS update checks against Ed25519-signed manifests.
+
+---
+
+## Supported Platforms & Downloads
+
+Official pre-built releases are signed and published with verifiable SHA-256 checksums:
+
+| Platform | Format | Architecture | Download |
+|---|---|---|---|
+| **Linux** | `.tar.gz` / Snap | `x86_64` | [Download Linux](https://firewoodsec.yahyaoncloud.com/download/#desktop) |
+| **Windows** | `.zip` (Portable) | `x86_64` | [Download Windows](https://firewoodsec.yahyaoncloud.com/download/#desktop) |
+| **macOS** | Native app | `Universal` | Build from source |
+
+All official release binaries can also be found at the [Firewood Distribution Portal](https://firewoodsec.yahyaoncloud.com/download/).
+
+### Verifying Checksums
+After downloading an archive, verify its integrity:
+
+```bash
+# Linux
+sha256sum firewood-latest-linux-x64.tar.gz
+
+# Windows (PowerShell)
+Get-FileHash firewood-latest-windows-x64.zip -Algorithm SHA256
+```
+
+---
+
+## Repository Architecture & Packages
 
 ```
 firewood-desktop/
-├── lib/                         Application source (Flutter)
-│   └── src/                     Screens, services, providers, models
+├── lib/
+│   └── src/                     Screens (unlock, setup, vault home, settings),
+│                                providers (Riverpod), models, and local services
 ├── packages/
-│   ├── firewood_design/         Design tokens: colours, typography, spacing, strings, theme
-│   └── firewood_ui_desktop/     Desktop widget library: rail, title bar, buttons,
-│                                dropdown, auth scaffold
-├── assets/                      Icons, images, fonts
-├── linux/                       Linux platform embedding (GTK)
-├── macos/                       macOS platform embedding
-├── windows/                     Windows platform embedding
-├── test/                        Widget and layout tests
-└── snapcraft.yaml               Snap packaging manifest (Linux)
+│   ├── firewood_design/         Design tokens: Dark Zinc palette, typography scale,
+│   │                            spacing, strings, and AppTheme (pure Dart package)
+│   └── firewood_ui_desktop/     Desktop widget primitives: custom FwTitleBar,
+│                                FwNavigationRail, FwButton, FwDropdown, AuthScaffold
+├── assets/                      Vector icons, brand graphics, and typography
+├── linux/                       Linux GTK runner embedding
+├── windows/                     Windows Win32 runner embedding
+├── macos/                       macOS Cocoa runner embedding
+├── test/                        Unit, widget, and layout tests
+├── CONTRIBUTING.md               Contribution guidelines
+├── SECURITY.md                   Vulnerability reporting and security model
+└── snapcraft.yaml               Canonical Snap packaging manifest
 ```
+
+### Design System Modularity
+- **`packages/firewood_design`**: Contains design system primitives, color tokens, typography scales, and theme configuration. It has zero dependency on Flutter widgets and can be tested in pure Dart.
+- **`packages/firewood_ui_desktop`**: Reusable desktop UI components built on top of `firewood_design`. Widgets do not import backend services directly; they receive state and callbacks via constructor parameters.
 
 ---
 
-## Packages
+## Development & Building
 
-### `packages/firewood_design`
+### Prerequisites
+- [Flutter SDK](https://flutter.dev) `3.47.5+` (pinned stable)
+- [Dart SDK](https://dart.dev) matching Flutter
+- Platform-specific build tools:
+  - **Linux**: `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `libsecret-1-dev`
+  - **Windows**: Visual Studio 2022 with "Desktop development with C++"
+  - **macOS**: Xcode with Command Line Tools
 
-Design-system primitives shared across the desktop UI. Contains colour palette,
-typography scale, spacing constants, localised strings, and `AppTheme` —
-the single entry point for theming.
+### Quickstart
 
-Nothing in `firewood_design` imports Flutter widgets; it is a pure Dart package
-so it can be unit-tested without a widget environment.
+1. **Install dependencies**:
+   ```bash
+   flutter pub get
+   ```
 
-### `packages/firewood_ui_desktop`
+2. **Run static analysis & format check**:
+   ```bash
+   dart format --output=none --set-exit-if-changed lib test packages
+   flutter analyze lib/ --fatal-warnings --no-fatal-infos
+   ```
 
-Desktop-specific widget library built on top of `firewood_design`. Provides:
+3. **Run unit & widget tests**:
+   ```bash
+   flutter test test/ --reporter compact
+   ```
 
-| Widget | Purpose |
-|---|---|
-| `FwNavigationRail` | Collapsible sidebar rail with icon + label items |
-| `FwTitleBar` | Custom window title bar with drag region and window controls |
-| `FwButton` / variants | Primary, secondary, destructive, ghost, icon button styles |
-| `FwDropdown` | Accessible, keyboard-navigable dropdown |
-| `AuthScaffold` | Unlock / setup page scaffold with centred card layout |
+4. **Run the desktop app locally**:
+   ```bash
+   # Linux
+   flutter run -d linux
 
----
+   # Windows
+   flutter run -d windows
 
-## Key dependencies
+   # macOS
+   flutter run -d macos
+   ```
 
-| Package | Purpose |
-|---|---|
-| `firewood_core` | Encrypted container, vault service, item service, backup, sharing — pinned at `ref: v0.1.0` |
-| `flutter_riverpod` | State management (mirrors the mobile state model) |
-| `isar` | Local encrypted-field storage |
-| `cryptography` | Argon2id, XChaCha20-Poly1305, HKDF — no custom primitives |
-| `window_manager` | Window title, size, tray icon, always-on-top |
-| `flutter_blue_plus` | BLE share transport (desktop where supported) |
-| `file_picker` | Cross-platform file open/save dialogs |
-| `hugeicons` | Icon set |
+### Building Release Packages
 
-### Developing against an unreleased core
-
-Add a git-ignored `pubspec_overrides.yaml` at the repository root:
-
-```yaml
-dependency_overrides:
-  firewood_core:
-    path: /path/to/local/firewood-core/framework-dart
-```
-
-This overrides the pinned `ref: v0.1.0` without touching `pubspec.yaml`.
-
----
-
-## Getting started
-
+#### Linux Tarball & Snap
 ```bash
-flutter pub get
-flutter analyze
-flutter test
-```
+# Build Linux release bundle
+flutter build linux --release
 
-### Run on a specific platform
-
-```bash
-flutter run -d linux
-flutter run -d windows
-flutter run -d macos
-```
-
-### Run tests
-
-```bash
-flutter test
-```
-
----
-
-## Packaging
-
-### Linux — Snap
-
-```bash
-snapcraft                    # builds the snap from snapcraft.yaml
+# Build Snap package
+snapcraft
 sudo snap install firewood_*.snap --dangerous
 ```
 
-The `snapcraft.yaml` at the repository root targets `linux`; it sets
-`confinement: strict` and declares only the permissions the app requires.
-
-### Windows
-
+#### Windows Release Zip
 ```bash
+# Build Windows release runner
 flutter build windows --release
+
+# Output binary located at:
+# build/windows/x64/runner/Release/
 ```
-
-The output under `build/windows/runner/Release/` can be wrapped with MSIX or
-any Windows installer toolchain.
-
-### macOS
-
-```bash
-flutter build macos --release
-```
-
-Notarisation and code-signing are handled separately via Xcode or `altool`.
 
 ---
 
-## Platform notes
+## Security & Threat Model
 
-- **Linux:** downloads go to `~/Downloads/Firewood/`; the update endpoint uses
-  the `linux` platform key. No platform-specific Dart code beyond the download
-  directory selection.
-- **Windows / macOS:** follow the same Dart code paths as Linux; platform
-  embedding differences are isolated to the `linux/`, `windows/`, and `macos/`
-  directories.
-- **No iOS / Android code** lives in this repository.
+1. **Zero Knowledge**: Master keys exist strictly in volatile RAM and are never written to disk.
+2. **Field-Level Isolation**: Each secret is individually encrypted with an Argon2id-derived 256-bit key and XChaCha20-Poly1305.
+3. **No Cloud Dependency**: No telemetry, no remote databases, and no cloud synchronization services exist in the binary.
+4. **AirShare P2P Transport**: Device-to-device credential sharing occurs over local BLE with payload encryption, ensuring credentials are never exposed in transit.
+
+For full details or to report vulnerabilities, see [`SECURITY.md`](SECURITY.md).
 
 ---
 
-## Design system conventions
+## Contributing
 
-- All colours and typography are consumed from `firewood_design` tokens.
-  Hard-coded colour literals in widget code are a bug.
-- `firewood_ui_desktop` widgets must not import application services. They
-  receive data and callbacks as constructor parameters.
-- `firewood_design` must not import Flutter widgets — keep it a plain Dart
-  package so it can be tested without a widget environment.
+We welcome contributions from the open-source community! Please review [`CONTRIBUTING.md`](CONTRIBUTING.md) for pull request guidelines, coding standards, and development workflows.
 
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

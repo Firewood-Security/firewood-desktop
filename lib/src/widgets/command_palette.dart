@@ -212,9 +212,9 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
 
   bool _hasTotp(DecryptedItem item) {
     return ((item.fields['totp_secret'] ?? item.fields['totpSecret'] ?? '')
-            .toString()
-            .trim()
-            .isNotEmpty);
+        .toString()
+        .trim()
+        .isNotEmpty);
   }
 
   String _bundleName(DecryptedItem item) {
@@ -226,17 +226,13 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
     final user = _dossierUser(item);
     switch (type) {
       case ItemType.card:
-        return user.isNotEmpty
-            ? 'Card: $user · CVV: ••••'
-            : 'CVV: ••••';
+        return user.isNotEmpty ? 'Card: $user · CVV: ••••' : 'CVV: ••••';
       case ItemType.identity:
         return user.isNotEmpty ? 'ID: $user' : 'ID record';
       case ItemType.note:
         return user.isNotEmpty ? 'Note: $user' : 'Secure note';
       case ItemType.developerSecret:
-        return user.isNotEmpty
-            ? 'Key: $user · Secret: ••••'
-            : 'Secret: ••••';
+        return user.isNotEmpty ? 'Key: $user · Secret: ••••' : 'Secret: ••••';
       case ItemType.login:
         return user.isNotEmpty ? 'User: $user · Pass: ••••' : 'Pass: ••••';
     }
@@ -314,8 +310,7 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 13.5,
-                  fontWeight:
-                      isSel ? FontWeight.bold : FontWeight.w700,
+                  fontWeight: isSel ? FontWeight.bold : FontWeight.w700,
                 ),
               ),
             ),
@@ -383,6 +378,7 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
       ],
     );
   }
+
   Color _badgeColor(String? badge) {
     if (badge == null) return Colors.white54;
     switch (badge.toUpperCase()) {
@@ -613,140 +609,155 @@ class _DesktopCommandPaletteState extends ConsumerState<DesktopCommandPalette> {
                                     child: entry.item != null
                                         ? _buildDossierRow(entry, isSel)
                                         : Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: isSel
-                                                ? AppColors.orangeAccent
-                                                    .withOpacity(0.2)
-                                                : const Color(0xFF1A1E29),
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                          ),
-                                          child: HugeIcon(
-                                            icon: entry.icon,
-                                            size: 18,
-                                            color: isSel
-                                                ? AppColors.orangeAccent
-                                                : Colors.white70,
-                                            strokeWidth: 1.8,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                entry.label,
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 14,
-                                                  fontWeight: isSel
-                                                      ? FontWeight.bold
-                                                      : FontWeight.w600,
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                  color: isSel
+                                                      ? AppColors.orangeAccent
+                                                          .withOpacity(0.2)
+                                                      : const Color(0xFF1A1E29),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                                child: HugeIcon(
+                                                  icon: entry.icon,
+                                                  size: 18,
+                                                  color: isSel
+                                                      ? AppColors.orangeAccent
+                                                      : Colors.white70,
+                                                  strokeWidth: 1.8,
                                                 ),
                                               ),
-                                              if (entry.subtitle != null) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  entry.subtitle!,
-                                                  style: TextStyle(
-                                                    color: Colors.white
-                                                        .withOpacity(0.45),
-                                                    fontSize: 12,
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      entry.label,
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 14,
+                                                        fontWeight: isSel
+                                                            ? FontWeight.bold
+                                                            : FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    if (entry.subtitle !=
+                                                        null) ...[
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        entry.subtitle!,
+                                                        style: TextStyle(
+                                                          color: Colors.white
+                                                              .withOpacity(
+                                                                  0.45),
+                                                          fontSize: 12,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                              ),
+                                              if (entry.badge != null)
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 2.5),
+                                                  decoration: BoxDecoration(
+                                                    color:
+                                                        _badgeColor(entry.badge)
+                                                            .withOpacity(0.14),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            4),
+                                                    border: Border.all(
+                                                      color: _badgeColor(
+                                                              entry.badge)
+                                                          .withOpacity(0.35),
+                                                      width: 0.8,
+                                                    ),
                                                   ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
+                                                  child: Text(
+                                                    entry.badge!,
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: _badgeColor(
+                                                          entry.badge),
+                                                      letterSpacing: 0.6,
+                                                    ),
+                                                  ),
+                                                ),
+                                              if (entry.item != null &&
+                                                  (entry
+                                                          .item!
+                                                          .fields['password']
+                                                          ?.isNotEmpty ??
+                                                      false)) ...[
+                                                const SizedBox(width: 8),
+                                                Tooltip(
+                                                  message:
+                                                      'Copy password to clipboard',
+                                                  child: InkWell(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            4),
+                                                    onTap: () {
+                                                      final pw = entry.item!
+                                                          .fields['password']!;
+                                                      SecureClipboard.copy(
+                                                        context: context,
+                                                        text: pw,
+                                                        label:
+                                                            '${entry.item!.title} password',
+                                                      );
+                                                    },
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              5),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                            0xFF1F2432),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(4),
+                                                        border: Border.all(
+                                                            color: const Color(
+                                                                0xFF2E3649)),
+                                                      ),
+                                                      child: const HugeIcon(
+                                                        icon: HugeIcons
+                                                            .strokeRoundedCopy01,
+                                                        size: 14,
+                                                        color: Colors.white70,
+                                                        strokeWidth: 1.8,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                              if (isSel) ...[
+                                                const SizedBox(width: 8),
+                                                const HugeIcon(
+                                                  icon: HugeIcons
+                                                      .strokeRoundedArrowRight01,
+                                                  size: 16,
+                                                  color: AppColors.orangeAccent,
+                                                  strokeWidth: 2,
                                                 ),
                                               ],
                                             ],
                                           ),
-                                        ),
-                                        if (entry.badge != null)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 7, vertical: 2.5),
-                                            decoration: BoxDecoration(
-                                              color: _badgeColor(entry.badge)
-                                                  .withOpacity(0.14),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: _badgeColor(entry.badge)
-                                                    .withOpacity(0.35),
-                                                width: 0.8,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              entry.badge!,
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: _badgeColor(entry.badge),
-                                                letterSpacing: 0.6,
-                                              ),
-                                            ),
-                                          ),
-                                        if (entry.item != null &&
-                                            (entry.item!.fields['password']
-                                                    ?.isNotEmpty ??
-                                                false)) ...[
-                                          const SizedBox(width: 8),
-                                          Tooltip(
-                                            message:
-                                                'Copy password to clipboard',
-                                            child: InkWell(
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                              onTap: () {
-                                                final pw = entry
-                                                    .item!.fields['password']!;
-                                                SecureClipboard.copy(
-                                                  context: context,
-                                                  text: pw,
-                                                  label:
-                                                      '${entry.item!.title} password',
-                                                );
-                                              },
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.all(5),
-                                                decoration: BoxDecoration(
-                                                  color:
-                                                      const Color(0xFF1F2432),
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                  border: Border.all(
-                                                      color: const Color(
-                                                          0xFF2E3649)),
-                                                ),
-                                                child: const HugeIcon(
-                                                  icon: HugeIcons
-                                                      .strokeRoundedCopy01,
-                                                  size: 14,
-                                                  color: Colors.white70,
-                                                  strokeWidth: 1.8,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        if (isSel) ...[
-                                          const SizedBox(width: 8),
-                                          const HugeIcon(
-                                            icon: HugeIcons
-                                                .strokeRoundedArrowRight01,
-                                            size: 16,
-                                            color: AppColors.orangeAccent,
-                                            strokeWidth: 2,
-                                          ),
-                                        ],
-                                      ],
-                                    ),
                                   ),
                                 );
                               },

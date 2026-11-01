@@ -164,12 +164,10 @@ class _PasswordGeneratorDialogState extends State<PasswordGeneratorDialog> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 3),
                             decoration: BoxDecoration(
-                              color:
-                                  AppColors.orangeAccent.withOpacity(0.15),
+                              color: AppColors.orangeAccent.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: AppColors.orangeAccent
-                                    .withOpacity(0.3),
+                                color: AppColors.orangeAccent.withOpacity(0.3),
                                 width: 1,
                               ),
                             ),

@@ -18,10 +18,13 @@ class HearthRail extends StatelessWidget {
   final VoidCallback onLock;
 
   static const List<HearthRailDestination> destinations = [
-    HearthRailDestination(HugeIcons.strokeRoundedLayoutDashboard, AppStrings.dashboard),
+    HearthRailDestination(
+        HugeIcons.strokeRoundedLayoutDashboard, AppStrings.dashboard),
     HearthRailDestination(HugeIcons.strokeRoundedShield01, AppStrings.vault),
-    HearthRailDestination(HugeIcons.strokeRoundedMagicWand01, AppStrings.generator),
-    HearthRailDestination(HugeIcons.strokeRoundedSettings01, AppStrings.settings),
+    HearthRailDestination(
+        HugeIcons.strokeRoundedMagicWand01, AppStrings.generator),
+    HearthRailDestination(
+        HugeIcons.strokeRoundedSettings01, AppStrings.settings),
     HearthRailDestination(HugeIcons.strokeRoundedBluetooth, AppStrings.sharing),
   ];
 
@@ -116,7 +119,9 @@ class _RailButtonState extends State<_RailButton> {
                       : Colors.transparent,
               borderRadius: AppRadii.mdAll,
               border: Border.all(
-                color: active ? AppColors.ember.withValues(alpha: 0.4) : Colors.transparent,
+                color: active
+                    ? AppColors.ember.withValues(alpha: 0.4)
+                    : Colors.transparent,
               ),
             ),
             child: Center(

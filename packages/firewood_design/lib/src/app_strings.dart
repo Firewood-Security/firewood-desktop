@@ -14,8 +14,10 @@ class AppStrings {
   static const String masterPassword = 'Master Password';
   static const String confirmPassword = 'Confirm Master Password';
   static const String enterMasterPassword = 'Enter your master password';
-  static const String setupSubtitle = 'Choose a strong master password. It is never stored.';
-  static const String unlockSubtitle = 'Your vault is locked. Enter your master password.';
+  static const String setupSubtitle =
+      'Choose a strong master password. It is never stored.';
+  static const String unlockSubtitle =
+      'Your vault is locked. Enter your master password.';
   static const String passwordRequired = 'Password required';
   static const String passwordsDoNotMatch = 'Passwords do not match';
   static const String passwordTooShort = 'Use at least 8 characters';
@@ -35,9 +37,11 @@ class AppStrings {
   static const String searchVault = 'Search vault items...';
   static const String noMatchingItems = 'No matching items';
   static const String vaultEmpty = 'Vault is Empty';
-  static const String vaultEmptyHint = 'Add your first password, card, key or note';
+  static const String vaultEmptyHint =
+      'Add your first password, card, key or note';
   static const String selectItem = 'Select an item';
-  static const String selectItemHint = 'Pick something from the list, or press Ctrl+K';
+  static const String selectItemHint =
+      'Pick something from the list, or press Ctrl+K';
   static const String lockVault = 'Lock Vault';
   static const String deleteItem = 'Delete Item';
   static const String deleteItemConfirm = 'This action cannot be undone.';
@@ -97,5 +101,6 @@ class AppStrings {
   // Errors / status
   static const String unexpectedError = 'An unexpected error occurred.';
   static const String unlockFirst = 'Unlock the vault first';
-  static const String storagePermissionDenied = 'Storage permission is required.';
+  static const String storagePermissionDenied =
+      'Storage permission is required.';
 }

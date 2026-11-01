@@ -154,7 +154,9 @@ class _WindowButtonState extends State<_WindowButton> {
             margin: const EdgeInsets.symmetric(horizontal: 1),
             decoration: BoxDecoration(
               color: _hover
-                  ? (widget.danger ? AppColors.roseAccent : AppColors.hearthRaised)
+                  ? (widget.danger
+                      ? AppColors.roseAccent
+                      : AppColors.hearthRaised)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),

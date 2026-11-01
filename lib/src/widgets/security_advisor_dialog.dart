@@ -249,8 +249,7 @@ class SecurityAdvisorDialog extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: const Color(0xFF13151A),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                                color: const Color(0xFF262A33)),
+                            border: Border.all(color: const Color(0xFF262A33)),
                           ),
                           child: Text(
                             group.advice,

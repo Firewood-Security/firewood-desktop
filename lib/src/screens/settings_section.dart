@@ -1119,8 +1119,7 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                   'Bring credentials from another manager or restore an encrypted backup.',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 _ImportOptionRow(
@@ -1243,8 +1242,7 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 ...steps.map((s) => Padding(
-                      padding:
-                          const EdgeInsets.only(bottom: AppSpacing.md),
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1274,8 +1272,7 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   s.heading,
@@ -1463,16 +1460,14 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                   _ToolCard(
                     icon: HugeIcons.strokeRoundedKey02,
                     label: 'Generator',
-                    onTap: () => ref
-                        .read(desktopTabProvider.notifier)
-                        .state = 2,
+                    onTap: () =>
+                        ref.read(desktopTabProvider.notifier).state = 2,
                   ),
                   _ToolCard(
                     icon: HugeIcons.strokeRoundedShare08,
                     label: 'AirShare',
-                    onTap: () => ref
-                        .read(desktopTabProvider.notifier)
-                        .state = 4,
+                    onTap: () =>
+                        ref.read(desktopTabProvider.notifier).state = 4,
                   ),
                   _ToolCard(
                     icon: HugeIcons.strokeRoundedUpload01,
@@ -1761,13 +1756,10 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                                     ],
                                   ),
                                 ),
-                                _HowItWorksPill(
-                                    onTap: _showBrowserGuide),
+                                _HowItWorksPill(onTap: _showBrowserGuide),
                                 const SizedBox(width: 8),
                                 _StatusDotPill(
-                                  label: active
-                                      ? 'Active'
-                                      : 'Enable',
+                                  label: active ? 'Active' : 'Enable',
                                   active: active,
                                 ),
                               ],
@@ -2139,15 +2131,15 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                     const Text(
                       'Firewood 1.0.0 · desktop',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.textMuted),
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.textMuted),
                     ),
                     const SizedBox(height: 2),
                     const Text(
                       'Zero-knowledge vault · secrets never leave this device',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.textMuted),
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.textMuted),
                     ),
                     const SizedBox(height: 8),
                     TextButton(
@@ -2155,8 +2147,7 @@ class _SettingsSectionState extends ConsumerState<SettingsSection> {
                       child: const Text(
                         'support@firewoodsecurity.com',
                         style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.orangeAccent),
+                            fontSize: 12, color: AppColors.orangeAccent),
                       ),
                     ),
                   ],
@@ -2446,8 +2437,7 @@ class _HowItWorksPill extends StatelessWidget {
       child: Tooltip(
         message: 'How it works',
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: AppColors.cardZinc,
             borderRadius: BorderRadius.circular(20),
@@ -2487,8 +2477,7 @@ class _StatusDotPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        active ? AppColors.mintAccent : AppColors.textMuted;
+    final color = active ? AppColors.mintAccent : AppColors.textMuted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -2551,16 +2540,15 @@ class _ImportOptionRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.cardZinc,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: AppColors.borderZinc.withValues(alpha: 0.5)),
+          border:
+              Border.all(color: AppColors.borderZinc.withValues(alpha: 0.5)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color:
-                    AppColors.orangeAccent.withValues(alpha: 0.15),
+                color: AppColors.orangeAccent.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: HugeIcon(

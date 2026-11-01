@@ -6,7 +6,14 @@ import 'package:hugeicons/hugeicons.dart';
 
 import 'package:firewood_design/firewood_design.dart';
 
-enum FirewoodButtonVariant { primary, secondary, danger, success, soft, outline }
+enum FirewoodButtonVariant {
+  primary,
+  secondary,
+  danger,
+  success,
+  soft,
+  outline
+}
 
 class FirewoodButton extends StatelessWidget {
   final String label;
@@ -40,7 +47,10 @@ class FirewoodButton extends StatelessWidget {
         gradient = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [AppColors.orangeAccent, AppColors.shade(AppColors.orangeAccent, -0.08)],
+          colors: [
+            AppColors.orangeAccent,
+            AppColors.shade(AppColors.orangeAccent, -0.08)
+          ],
         );
         borderColor = AppColors.orangeDark;
         textColor = Colors.white;
@@ -108,7 +118,8 @@ class FirewoodButton extends StatelessWidget {
               key: const ValueKey('spinner'),
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2.2, color: textColor),
+              child:
+                  CircularProgressIndicator(strokeWidth: 2.2, color: textColor),
             )
           : Row(
               key: const ValueKey('label'),
@@ -116,7 +127,11 @@ class FirewoodButton extends StatelessWidget {
               mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 if (icon != null) ...[
-                  HugeIcon(icon: icon!, size: 16, color: textColor, strokeWidth: 2.0),
+                  HugeIcon(
+                      icon: icon!,
+                      size: 16,
+                      color: textColor,
+                      strokeWidth: 2.0),
                   const SizedBox(width: AppSpacing.sm),
                 ],
                 Text(

@@ -73,7 +73,8 @@ class AuthScaffold extends StatelessWidget {
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+                  style: const TextStyle(
+                      color: AppColors.textMuted, fontSize: 12, height: 1.4),
                 ),
                 const SizedBox(height: AppSpacing.xl),
                 Container(

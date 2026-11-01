@@ -67,4 +67,3 @@ class AppColors {
     return hsl.withLightness((hsl.lightness + delta).clamp(0.0, 1.0)).toColor();
   }
 }
-

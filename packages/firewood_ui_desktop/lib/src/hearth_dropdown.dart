@@ -10,7 +10,8 @@ class HearthDropdownItem<T> {
   final T value;
   final String label;
   final List<List<dynamic>> icon;
-  const HearthDropdownItem({required this.value, required this.label, required this.icon});
+  const HearthDropdownItem(
+      {required this.value, required this.label, required this.icon});
 }
 
 class HearthDropdown<T> extends StatelessWidget {
@@ -31,7 +32,10 @@ class HearthDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = items.where((i) => i.value == value).cast<HearthDropdownItem<T>?>().firstOrNull;
+    final selected = items
+        .where((i) => i.value == value)
+        .cast<HearthDropdownItem<T>?>()
+        .firstOrNull;
 
     return PopupMenuButton<T>(
       tooltip: '',
@@ -53,7 +57,9 @@ class HearthDropdown<T> extends StatelessWidget {
                 HugeIcon(
                   icon: item.icon,
                   size: 17,
-                  color: item.value == value ? AppColors.emberBright : AppColors.textMuted,
+                  color: item.value == value
+                      ? AppColors.emberBright
+                      : AppColors.textMuted,
                   strokeWidth: 1.8,
                 ),
                 const SizedBox(width: AppSpacing.md),
@@ -62,7 +68,8 @@ class HearthDropdown<T> extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.offWhite,
                     fontSize: 13,
-                    fontWeight: item.value == value ? FontWeight.w700 : FontWeight.w400,
+                    fontWeight:
+                        item.value == value ? FontWeight.w700 : FontWeight.w400,
                   ),
                 ),
                 if (item.value == value) ...[

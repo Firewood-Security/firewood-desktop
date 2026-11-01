@@ -395,8 +395,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                                 ),
                               ),
                             ),
-                            if (advisory.score < 80 &&
-                                _items.isNotEmpty) ...[
+                            if (advisory.score < 80 && _items.isNotEmpty) ...[
                               const SizedBox(width: 8),
                               Tooltip(
                                 message: advisory.score >= 50
@@ -411,8 +410,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                                         ? const Color(0xFFF59E0B)
                                         : AppColors.roseAccent,
                                     border: Border.all(
-                                      color:
-                                          Colors.white.withOpacity(0.35),
+                                      color: Colors.white.withOpacity(0.35),
                                       width: 1,
                                     ),
                                   ),
@@ -675,20 +673,18 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                   ref.read(desktopTabProvider.notifier).state = 1;
                 },
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   child: Row(
                     children: [
                       Container(
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color:
-                              AppColors.orangeAccent.withOpacity(0.12),
+                          color: AppColors.orangeAccent.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: AppColors.orangeAccent
-                                .withOpacity(0.3),
+                            color: AppColors.orangeAccent.withOpacity(0.3),
                           ),
                         ),
                         child: const Center(
@@ -703,8 +699,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
@@ -712,8 +707,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                                   child: Text(
                                     name,
                                     maxLines: 1,
-                                    overflow:
-                                        TextOverflow.ellipsis,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w700,
@@ -722,15 +716,12 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                                   ),
                                 ),
                                 Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 7, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: AppColors.orangeAccent
                                         .withOpacity(0.15),
-                                    borderRadius:
-                                        BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
                                       color: AppColors.orangeAccent
                                           .withOpacity(0.3),
@@ -741,8 +732,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                                     style: const TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      color:
-                                          AppColors.orangeAccent,
+                                      color: AppColors.orangeAccent,
                                     ),
                                   ),
                                 ),
@@ -756,8 +746,7 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color:
-                                    Colors.white.withOpacity(0.5),
+                                color: Colors.white.withOpacity(0.5),
                                 fontSize: 11.5,
                               ),
                             ),
@@ -770,13 +759,11 @@ class _DashboardSectionState extends ConsumerState<_DashboardSection> {
                         height: 28,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(
-                              color: const Color(0xFF2E3547)),
+                          border: Border.all(color: const Color(0xFF2E3547)),
                         ),
                         child: const Center(
                           child: HugeIcon(
-                            icon: HugeIcons
-                                .strokeRoundedArrowRight01,
+                            icon: HugeIcons.strokeRoundedArrowRight01,
                             size: 14,
                             color: Colors.white60,
                             strokeWidth: 1.8,
@@ -1115,8 +1102,7 @@ Widget _dossierCredentialTile({
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E222D),
                           borderRadius: BorderRadius.circular(4),
-                          border:
-                              Border.all(color: const Color(0xFF2E3547)),
+                          border: Border.all(color: const Color(0xFF2E3547)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,

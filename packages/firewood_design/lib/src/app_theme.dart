@@ -13,10 +13,12 @@ class AppTheme {
 
   static ThemeData getDarkTheme([Color accentColor = AppColors.orangeAccent]) {
     final hsl = HSLColor.fromColor(accentColor);
-    final primaryContainer = hsl.withLightness(0.14).withSaturation(0.65).toColor();
+    final primaryContainer =
+        hsl.withLightness(0.14).withSaturation(0.65).toColor();
     final primaryOnContainer = hsl.withLightness(0.85).toColor();
     final isLightAccent = hsl.lightness > 0.65;
-    final onPrimaryText = isLightAccent ? const Color(0xFF140C08) : Colors.white;
+    final onPrimaryText =
+        isLightAccent ? const Color(0xFF140C08) : Colors.white;
 
     final inputBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
@@ -70,7 +72,8 @@ class AppTheme {
         enabledBorder: inputBorder,
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.orangeAccent, width: 1.5),
+          borderSide:
+              const BorderSide(color: AppColors.orangeAccent, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -81,8 +84,10 @@ class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.orangeAccent,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: AppSpacing.xl),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(
+              vertical: 14, horizontal: AppSpacing.xl),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
@@ -91,15 +96,19 @@ class AppTheme {
           backgroundColor: AppColors.surfaceZinc,
           foregroundColor: AppColors.offWhite,
           side: const BorderSide(color: AppColors.borderZinc),
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: AppSpacing.xl),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          padding: const EdgeInsets.symmetric(
+              vertical: 14, horizontal: AppSpacing.xl),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.orangeAccent,
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: AppSpacing.lg),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(
+              vertical: 10, horizontal: AppSpacing.lg),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
       dialogTheme: DialogThemeData(
